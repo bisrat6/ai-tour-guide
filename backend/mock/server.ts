@@ -13,7 +13,6 @@ import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import type { z } from 'zod';
 
-import './types.js';
 import { buildFixtures, type FixtureStore, type MockAdminUser } from './fixtures.js';
 import { deterministicUuid } from './deterministicId.js';
 import { ErrorCode } from '../src/shared/errorEnvelope.js';

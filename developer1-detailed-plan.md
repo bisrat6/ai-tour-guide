@@ -153,7 +153,7 @@ Exit criteria: Developers 2 and 3 can write and run client code against the mock
 
 ### D1-1 — Foundation
 
-**Status:** Not started
+**Status:** Done
 
 Goal: an app that boots correctly and fails correctly.
 
