@@ -15,6 +15,16 @@ const envSchema = z.object({
   LLM_PROVIDER: z.enum(['openai', 'addisai']).default('openai'),
   LLM_API_KEY: z.string().default(''),
   LLM_MODEL: z.string().default('gpt-4o-mini'),
+  // Any OpenAI-compatible /chat/completions endpoint (Gemini, Groq, OpenRouter, etc.)
+  // can be swapped in here without a code change — only 'addisai' uses a different
+  // request/response shape and ignores this.
+  LLM_BASE_URL: z.string().default('https://api.openai.com/v1/chat/completions'),
+  // Reasoning ("thinking") models spend tokens on hidden deliberation that counts
+  // against the same max_tokens ceiling as the visible answer, so a budget sized for
+  // the answer alone gets consumed by reasoning and the reply is truncated mid-sentence.
+  // Extra allowance added on top of each call's answer budget; 0 for models that don't
+  // think, so the cost ceiling stays tight where the headroom isn't needed.
+  LLM_REASONING_TOKEN_HEADROOM: z.coerce.number().int().nonnegative().default(0),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
 
   TTS_PROVIDER: z.enum(['elevenlabs']).default('elevenlabs'),
@@ -27,6 +37,14 @@ const envSchema = z.object({
   STORAGE_BUCKET: z.string().default(''),
   STORAGE_REGION: z.string().default(''),
   STORAGE_ENDPOINT: z.string().default(''),
+  // Addressing style for the S3 endpoint: virtual-hosted (bucket as subdomain,
+  // the SDK default, what AWS and R2 expect) versus path (bucket in the URL
+  // path, required by Supabase and MinIO, whose endpoints have no per-bucket
+  // hostname to resolve).
+  STORAGE_FORCE_PATH_STYLE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   STORAGE_ACCESS_KEY_ID: z.string().default(''),
   STORAGE_SECRET_ACCESS_KEY: z.string().default(''),
   STORAGE_PUBLIC_BASE_URL: z.string().default(''),

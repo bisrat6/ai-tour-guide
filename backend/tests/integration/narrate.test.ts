@@ -6,7 +6,13 @@ import { disconnectDb, resetDb } from '../helpers/db';
 import { seedAdwaFixture } from '../helpers/fixtures';
 import { audioContentHash } from '../../src/lib/hash';
 import { env } from '../../src/config/env';
-import { __setTtsProviderForTesting, TtsProvider, TtsSynthesizeInput, TtsSynthesizeOutput } from '../../src/providers/tts';
+import {
+  __setTtsProviderForTesting,
+  getTtsProvider,
+  TtsProvider,
+  TtsSynthesizeInput,
+  TtsSynthesizeOutput,
+} from '../../src/providers/tts';
 
 class DelayedScriptedTtsProvider implements TtsProvider {
   readonly name = 'scripted-test-double';
@@ -111,6 +117,21 @@ describe('Narration and audio pipeline (§11)', () => {
       const res = await request(app).get('/narrate/room/00000000-0000-0000-0000-000000000000');
       expect(res.status).toBe(404);
     });
+
+    it('re-synthesizes instead of failing when a cached record outlives its stored bytes', async () => {
+      const { room1 } = await seedAdwaFixture();
+      // Mimics memory storage after a restart: the row survives, the bytes do not.
+      await prisma.room.update({
+        where: { id: room1.id },
+        data: { roomAudioUrl: 'memory://audio/vanished.mp3' },
+      });
+
+      const res = await request(app).get(`/narrate/room/${room1.id}`);
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toMatch(/audio\/mpeg/);
+      expect(res.body.length).toBeGreaterThan(0);
+    });
   });
 
   describe('GET /narrate/answer/:answerId', () => {
@@ -120,13 +141,14 @@ describe('Narration and audio pipeline (§11)', () => {
       expect(chatRes.status).toBe(200);
 
       const answerId = chatRes.body.audioUrl.replace('/narrate/answer/', '');
-      const contentHash = audioContentHash(chatRes.body.answer, env.ELEVENLABS_DEFAULT_VOICE_ID, env.ELEVENLABS_MODEL);
+      const { model } = getTtsProvider();
+      const contentHash = audioContentHash(chatRes.body.answer, env.ELEVENLABS_DEFAULT_VOICE_ID, model);
       await prisma.audioAsset.create({
         data: {
           contentHash,
           url: 'https://cdn.example.test/answers/cached.mp3',
           voiceId: env.ELEVENLABS_DEFAULT_VOICE_ID,
-          model: env.ELEVENLABS_MODEL,
+          model,
         },
       });
 

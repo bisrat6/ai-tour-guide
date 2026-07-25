@@ -24,14 +24,29 @@ function isRedirectableUrl(url: string): boolean {
   return url.startsWith('http://') || url.startsWith('https://');
 }
 
-async function redirectOrProxy(res: Response, url: string, key: string): Promise<void> {
+/**
+ * Serves previously cached audio, reporting false if it could not be served so
+ * the caller falls through to synthesis. A cache record is only a hint: with
+ * memory storage the bytes are gone after a restart while the row survives, so
+ * a recorded URL is verified against storage rather than trusted into a 500.
+ */
+async function serveCachedAudio(res: Response, url: string, key: string): Promise<boolean> {
   if (isRedirectableUrl(url)) {
     res.redirect(302, url);
-    return;
+    return true;
   }
-  const stream = await getStorageProvider().getStream(key);
+
+  const storage = getStorageProvider();
+  const { exists } = await storage.head(key);
+  if (!exists) {
+    logger.warn({ key, url }, 'cached audio record points at bytes that are gone — re-synthesizing');
+    return false;
+  }
+
+  const stream = await storage.getStream(key);
   res.setHeader('Content-Type', 'audio/mpeg');
   stream.pipe(res);
+  return true;
 }
 
 /**
@@ -148,26 +163,23 @@ export async function streamRoomNarration(roomId: string, res: Response): Promis
   }
 
   const voiceId = room.museum.defaultVoiceId ?? env.ELEVENLABS_DEFAULT_VOICE_ID;
+  const tts = getTtsProvider();
+  const contentHash = audioContentHash(room.narrationScript, voiceId, tts.model);
+  const key = audioKeyFor(contentHash);
 
-  if (room.roomAudioUrl) {
-    // Already pre-generated (the expected, warm path in production — §11.5).
-    res.redirect(302, room.roomAudioUrl);
+  // Already pre-generated (the expected, warm path in production — §11.5).
+  if (room.roomAudioUrl && (await serveCachedAudio(res, room.roomAudioUrl, key))) {
+    return;
+  }
+
+  const existingAsset = await prisma.audioAsset.findUnique({ where: { contentHash } });
+  if (existingAsset && (await serveCachedAudio(res, existingAsset.url, key))) {
+    await prisma.room.update({ where: { id: room.id }, data: { roomAudioUrl: existingAsset.url } });
     return;
   }
 
   // Cold path: synthesize now, stream to the client, and persist so this room
   // never re-synthesizes again.
-  const tts = getTtsProvider();
-  const contentHash = audioContentHash(room.narrationScript, voiceId, tts.model);
-  const key = audioKeyFor(contentHash);
-
-  const existingAsset = await prisma.audioAsset.findUnique({ where: { contentHash } });
-  if (existingAsset) {
-    await prisma.room.update({ where: { id: room.id }, data: { roomAudioUrl: existingAsset.url } });
-    await redirectOrProxy(res, existingAsset.url, key);
-    return;
-  }
-
   await synthesizeStreamAndCache(res, contentHash, key, voiceId, room.narrationScript);
 
   const asset = await prisma.audioAsset.findUnique({ where: { contentHash } });
@@ -193,11 +205,10 @@ export async function streamAnswerNarration(answerId: string, res: Response): Pr
   const key = audioKeyFor(contentHash);
 
   const existingAsset = await prisma.audioAsset.findUnique({ where: { contentHash } });
-  if (existingAsset) {
+  if (existingAsset && (await serveCachedAudio(res, existingAsset.url, key))) {
     if (chatAnswer.audioHash !== contentHash) {
       await prisma.chatAnswer.update({ where: { id: chatAnswer.id }, data: { audioHash: contentHash } });
     }
-    await redirectOrProxy(res, existingAsset.url, key);
     return;
   }
 

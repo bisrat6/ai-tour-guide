@@ -1,0 +1,230 @@
+{
+  "info": {
+    "name": "AI Tour Guide Backend (Dev 2 scope)",
+    "_postman_id": "b7e1a1a0-0a1a-4a2a-9a1a-a1a1a1a1a1a1",
+    "description": "Visitor-facing API: content retrieval (§9), chat grounding (§10), and narration/audio (§11).\n\nSetup before using this collection:\n1. `npm run seed` then `npm run dev` from the `backend/` folder.\n2. Fill in the collection variables `roomId`, `itemId`, and `museumSlug` with real values from your seeded DB, e.g.:\n   `SELECT id FROM \"Room\" WHERE \"legacyId\"='room_1';`\n   `SELECT id FROM \"Item\" WHERE \"legacyId\"='room_1_treaty';`\n3. Run \"POST /chat\" once first to populate `answerId` automatically (its response is captured into the collection variable by a test script on that request), then the two `/narrate/answer/:answerId` requests will work.\n\nAll error responses share one envelope: `{ \"error\": { \"message\": string, \"code\": string, \"requestId\": string } }`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "museumSlug", "value": "adwa-museum" },
+    { "key": "roomId", "value": "REPLACE_WITH_REAL_ROOM_UUID" },
+    { "key": "itemId", "value": "REPLACE_WITH_REAL_ITEM_UUID" },
+    { "key": "answerId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "description": "Liveness + DB connectivity check. Returns 200 with { status, dbLatencyMs, version }."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Visitor Content (§9)",
+      "item": [
+        {
+          "name": "GET /waypoint/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/waypoint/{{roomId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["waypoint", "{{roomId}}"]
+            },
+            "description": "Returns a room with its items. 404 if the room doesn't exist or belongs to a suspended museum (indistinguishable from nonexistent, by design)."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /waypoint/:id (404 - unknown room)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/waypoint/00000000-0000-0000-0000-000000000000",
+              "host": ["{{baseUrl}}"],
+              "path": ["waypoint", "00000000-0000-0000-0000-000000000000"]
+            },
+            "description": "Expect 404 NOT_FOUND."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /museums/:slug",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/museums/{{museumSlug}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["museums", "{{museumSlug}}"]
+            },
+            "description": "Returns { id, name, slug, ticketRequired }."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /museums/:slug (404 - unknown slug)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/museums/does-not-exist",
+              "host": ["{{baseUrl}}"],
+              "path": ["museums", "does-not-exist"]
+            },
+            "description": "Expect 404 NOT_FOUND."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Chat (§10)",
+      "item": [
+        {
+          "name": "POST /chat - Case 2 (free-form, no itemId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  const answerId = body.audioUrl.replace('/narrate/answer/', '');",
+                  "  pm.collectionVariables.set('answerId', answerId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"waypointId\": \"{{roomId}}\",\n  \"question\": \"What happened in this room?\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/chat", "host": ["{{baseUrl}}"], "path": ["chat"] },
+            "description": "The model classifies which item (if any) the question is about and grounds the answer against room + item context. Saves the returned answerId into the `answerId` collection variable for the narrate requests below."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /chat - Case 1 (item-specific, with itemId)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"waypointId\": \"{{roomId}}\",\n  \"itemId\": \"{{itemId}}\",\n  \"question\": \"Tell me more about this.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/chat", "host": ["{{baseUrl}}"], "path": ["chat"] },
+            "description": "Grounds strictly on the tapped item's detailText. Response echoes matchedItemId + imageUrl for that exact item."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /chat - repeat question (cached:true expected)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"waypointId\": \"{{roomId}}\",\n  \"question\": \"What happened in this room?\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/chat", "host": ["{{baseUrl}}"], "path": ["chat"] },
+            "description": "Send the exact same waypointId+question as the first Case 2 request. Response should have \"cached\": true and the same answer/audioUrl, with no LLM call made."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /chat - 400 (blank question)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"waypointId\": \"{{roomId}}\",\n  \"question\": \"   \"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/chat", "host": ["{{baseUrl}}"], "path": ["chat"] },
+            "description": "Expect 400 VALIDATION_ERROR."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /chat - 404 (unknown waypointId)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"waypointId\": \"00000000-0000-0000-0000-000000000000\",\n  \"question\": \"Hello?\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/chat", "host": ["{{baseUrl}}"], "path": ["chat"] },
+            "description": "Expect 404 NOT_FOUND."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Narration / Audio (§11)",
+      "item": [
+        {
+          "name": "GET /narrate/room/:roomId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/narrate/room/{{roomId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["narrate", "room", "{{roomId}}"]
+            },
+            "description": "Cold path: synthesizes the room's narrationScript, streams audio/mpeg back, and persists roomAudioUrl for next time (redirects on subsequent calls once a real object-storage URL exists)."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /narrate/answer/:answerId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/narrate/answer/{{answerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["narrate", "answer", "{{answerId}}"]
+            },
+            "description": "Run a POST /chat request first so `answerId` is populated automatically. Streams (or redirects to) the audio for that specific cached chat answer."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /narrate/answer/:answerId (404 - unknown id)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/narrate/answer/00000000-0000-0000-0000-000000000000",
+              "host": ["{{baseUrl}}"],
+              "path": ["narrate", "answer", "00000000-0000-0000-0000-000000000000"]
+            },
+            "description": "Expect 404 NOT_FOUND."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

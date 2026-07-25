@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { env } from '../../config/env';
+import { logger } from '../../lib/logger';
 import { resilientCall } from '../../lib/resilientCall';
 import { LlmGenerateInput, LlmGenerateOutput, LlmProvider } from './types';
 
@@ -8,6 +9,12 @@ import { LlmGenerateInput, LlmGenerateOutput, LlmProvider } from './types';
  * product — its chat endpoint requires target_language "am" or "om" — so a
  * general model is the default here, with Addis AI registered as a
  * ready-to-swap adapter for when Amharic returns.
+ *
+ * Talks to any vendor exposing an OpenAI-compatible /chat/completions
+ * endpoint (OpenAI itself, Gemini, Groq, OpenRouter, ...) — LLM_BASE_URL and
+ * LLM_MODEL pick the vendor/model, so switching is a .env change, not a
+ * code change. LLM_API_KEY is passed the same way (Bearer token) for all of
+ * them.
  */
 export class OpenAiLlmProvider implements LlmProvider {
   readonly name = 'openai';
@@ -17,9 +24,9 @@ export class OpenAiLlmProvider implements LlmProvider {
       return fakeGenerate(input);
     }
 
-    return resilientCall({ providerName: 'openai-llm', timeoutMs: env.LLM_TIMEOUT_MS }, async (signal) => {
+    return resilientCall({ providerName: llmProviderBreakerKey(), timeoutMs: env.LLM_TIMEOUT_MS }, async (signal) => {
       const response = await axios.post(
-        'https://api.openai.com/v1/chat/completions',
+        env.LLM_BASE_URL,
         {
           model: env.LLM_MODEL,
           messages: [
@@ -27,7 +34,7 @@ export class OpenAiLlmProvider implements LlmProvider {
             { role: 'user', content: input.userPrompt },
           ],
           temperature: input.temperature ?? 0.2,
-          max_tokens: input.maxOutputTokens ?? 300,
+          max_tokens: (input.maxOutputTokens ?? 300) + env.LLM_REASONING_TOKEN_HEADROOM,
           ...(input.responseFormat === 'json' ? { response_format: { type: 'json_object' } } : {}),
         },
         {
@@ -39,9 +46,19 @@ export class OpenAiLlmProvider implements LlmProvider {
         }
       );
 
-      const text = response.data?.choices?.[0]?.message?.content;
+      const choice = response.data?.choices?.[0];
+      const text = choice?.message?.content;
       if (!text) {
         throw new Error('OpenAI returned an empty completion');
+      }
+      if (choice?.finish_reason === 'length') {
+        // Truncated output would otherwise surface downstream as unparseable JSON or a
+        // half-finished sentence read aloud to a visitor, with nothing pointing at the
+        // token ceiling as the cause.
+        logger.warn(
+          { model: env.LLM_MODEL, maxTokens: (input.maxOutputTokens ?? 300) + env.LLM_REASONING_TOKEN_HEADROOM },
+          'llm response truncated at the token limit — raise LLM_REASONING_TOKEN_HEADROOM if this model reasons before answering'
+        );
       }
       const usage = response.data?.usage
         ? {
@@ -51,6 +68,15 @@ export class OpenAiLlmProvider implements LlmProvider {
         : undefined;
       return { text, usage };
     });
+  }
+}
+
+/** Per-vendor circuit-breaker/log key, so switching LLM_BASE_URL doesn't share failure state with the previous vendor. */
+function llmProviderBreakerKey(): string {
+  try {
+    return `llm:${new URL(env.LLM_BASE_URL).hostname}`;
+  } catch {
+    return 'openai-llm';
   }
 }
 

@@ -1,3 +1,4 @@
+import { Readable } from 'stream';
 import { ApiError } from './errors';
 import { logger } from './logger';
 
@@ -67,6 +68,33 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Vendors explain refusals in the response body — an exhausted key quota, a
+ * model the account cannot reach — while the error's own message says only
+ * "Request failed with status code 401". Surfacing a bounded slice of that body
+ * is what makes a failure diagnosable from the logs instead of by reproducing
+ * the request by hand. Bodies streamed rather than parsed (audio responses)
+ * aren't serializable here, so those log the status alone.
+ */
+function upstreamDetail(err: unknown): { status?: number; body?: string } | undefined {
+  const response = (err as { response?: { status?: number; data?: unknown } })?.response;
+  if (!response) return undefined;
+
+  const { data } = response;
+  let body: string | undefined;
+  if (typeof data === 'string') {
+    body = data;
+  } else if (data && typeof data === 'object' && !(data instanceof Readable)) {
+    try {
+      body = JSON.stringify(data);
+    } catch {
+      body = undefined;
+    }
+  }
+
+  return { status: response.status, body: body?.slice(0, 500) };
+}
+
 export interface ResilientCallOptions {
   providerName: string;
   timeoutMs: number;
@@ -104,7 +132,13 @@ export async function resilientCall<T>(
     if (!isRetryable(firstErr)) {
       breaker.recordFailure();
       logger.error(
-        { provider: providerName, durationMs: Date.now() - startedAt, outcome: 'failure', err: String(firstErr) },
+        {
+          provider: providerName,
+          durationMs: Date.now() - startedAt,
+          outcome: 'failure',
+          err: String(firstErr),
+          upstream: upstreamDetail(firstErr),
+        },
         'provider call failed (non-retryable)'
       );
       throw ApiError.upstreamFailure(`${providerName} call failed`);
@@ -128,6 +162,7 @@ export async function resilientCall<T>(
           durationMs: Date.now() - startedAt,
           outcome: 'failure-after-retry',
           err: String(secondErr),
+          upstream: upstreamDetail(secondErr),
         },
         'provider call failed after one retry'
       );

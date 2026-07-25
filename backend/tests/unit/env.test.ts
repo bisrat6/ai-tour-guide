@@ -13,6 +13,8 @@ function buildEnv(overrides: Partial<Env> = {}): Env {
     LLM_PROVIDER: 'openai',
     LLM_API_KEY: 'sk-real-key',
     LLM_MODEL: 'gpt-4o-mini',
+    LLM_BASE_URL: 'https://api.openai.com/v1/chat/completions',
+    LLM_REASONING_TOKEN_HEADROOM: 0,
     LLM_TIMEOUT_MS: 15000,
 
     TTS_PROVIDER: 'elevenlabs',
@@ -25,6 +27,7 @@ function buildEnv(overrides: Partial<Env> = {}): Env {
     STORAGE_BUCKET: 'bucket',
     STORAGE_REGION: 'auto',
     STORAGE_ENDPOINT: '',
+    STORAGE_FORCE_PATH_STYLE: false,
     STORAGE_ACCESS_KEY_ID: 'key',
     STORAGE_SECRET_ACCESS_KEY: 'secret',
     STORAGE_PUBLIC_BASE_URL: 'https://cdn.example.test',

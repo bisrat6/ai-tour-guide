@@ -34,6 +34,7 @@ export class S3StorageProvider implements StorageProvider {
     this.client = new S3Client({
       region: env.STORAGE_REGION || 'auto',
       endpoint: env.STORAGE_ENDPOINT || undefined,
+      forcePathStyle: env.STORAGE_FORCE_PATH_STYLE,
       credentials:
         env.STORAGE_ACCESS_KEY_ID && env.STORAGE_SECRET_ACCESS_KEY
           ? { accessKeyId: env.STORAGE_ACCESS_KEY_ID, secretAccessKey: env.STORAGE_SECRET_ACCESS_KEY }
