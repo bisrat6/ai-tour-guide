@@ -36,6 +36,19 @@ or touching billing: it records each fix, the four issues left open (including
 the still-missing payment webhook), and why tier limits are implemented and
 tested but enforced on no route yet.
 
+Developer 2's visitor-facing work is now integrated as well: waypoint and museum
+lookup (`GET /waypoint/:id`, `GET /museums/:slug`), grounded chat with an answer
+cache (`POST /chat`), and narration audio (`GET /narrate/room/:roomId`,
+`GET /narrate/answer/:answerId`), backed by pluggable LLM, TTS, and object-storage
+adapters plus an offline pre-generation job (`npm run pregenerate:narration`).
+This port needed **no schema change and no migration** — Developer 1's
+`ChatAnswer`/`AudioAsset` contracts already matched. Its one significant defect
+was fixed on the way in: the provider adapters fall back to canned offline output
+when their API keys are unset, which is what keeps development and tests off the
+network, but production now refuses to boot that way instead of silently reading
+invented answers to visitors. See
+[docs/d2-integration-audit.md](../docs/d2-integration-audit.md).
+
 ## Quick start
 
 ```bash
@@ -173,8 +186,8 @@ full phase-by-phase history and
 [docs/dev2-dev3-handoff.md](../docs/dev2-dev3-handoff.md) for the
 `ChatAnswer`/`AudioAsset` table contracts and the cache-purge rule Developers
 2 and 3 build on. [docs/d3-integration-audit.md](../docs/d3-integration-audit.md)
-covers how Developer 3's billing and ticketing work was integrated, and what
-remains open in it.
+and [docs/d2-integration-audit.md](../docs/d2-integration-audit.md) cover how
+Developers 3 and 2 had their work integrated, and what remains open in each.
 
 ## Testing
 
@@ -184,10 +197,11 @@ remains open in it.
   and `TRUNCATE ... RESTART IDENTITY CASCADE` between tests (`resetDatabase`)
   — never point `TEST_DATABASE_URL` at the same database as `DATABASE_URL`.
 - `tests/integration/isolation.test.ts` is the canonical tenant-isolation
-  suite (§17.2 of the main plan): 11 of 12 cases pass; case 9 is an
-  `it.todo` blocked on visitor routes that don't exist in this package yet.
-  Every guard it exercises has been manually verified to fail its test when
-  disabled (see commit history for D1-7).
+  suite (§17.2 of the main plan): all 12 cases now pass. Case 9 was an
+  `it.todo` until Developer 2's visitor routes were integrated; it now
+  asserts that suspending a museum hides its content from all four visitor
+  entry points. Every guard it exercises has been manually verified to fail
+  its test when disabled (see commit history for D1-7).
 - `tests/integration/errorEnvelope.test.ts` covers the failure paths that
   never reach a route handler — malformed JSON, oversized bodies, unmatched
   routes — so the §7.1 envelope guarantee holds even there.

@@ -5,10 +5,8 @@
  * returns 200 with the wrong museum's rooms is exactly the bug this exists
  * to catch (§17.2).
  *
- * Case 9 ("suspended museum's room via GET /waypoint/:id -> 404") is not
- * yet testable: visitor-facing routes belong to Developers 2/3 (main plan
- * phases 5-8) and don't exist in this codebase yet. Tracked as it.todo so
- * the gap is visible in test output rather than silently dropped.
+ * Case 9 covers the visitor side of suspension across all four visitor entry
+ * points; it was an it.todo until Developer 2's routes were integrated.
  */
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
@@ -159,11 +157,37 @@ describe('D1-7 tenant isolation matrix (§17.2)', () => {
     expect(write.body.status).toBe('SUSPENDED');
   });
 
-  // Case 9: visitor routes (GET /waypoint/:id) are Developers 2/3's work
-  // (main plan phases 5-8) and don't exist yet in this codebase.
-  it.todo(
-    "Case 9: suspended museum's room via GET /waypoint/:id -> 404 (blocked on visitor routes, not yet built)",
-  );
+  it("Case 9: suspended museum's room via GET /waypoint/:id -> 404", async () => {
+    const { system, tenantB, roomB1 } = await seedScenario();
+
+    // Reachable before suspension, which is what makes the 404 afterwards
+    // meaningful rather than a room that was never visible.
+    const before = await request(app).get(`/waypoint/${roomB1.id}`);
+    expect(before.status).toBe(200);
+
+    const suspend = await request(app)
+      .patch(`/admin/museums/${tenantB.museum.id}`)
+      .set(authHeader(system.token))
+      .send({ status: 'SUSPENDED' });
+    expect(suspend.status).toBe(200);
+
+    // 404 rather than 403: a visitor must not be able to tell a suspended
+    // museum from one that never existed.
+    const after = await request(app).get(`/waypoint/${roomB1.id}`);
+    expect(after.status).toBe(404);
+    expect(after.body.error.code).toBe('NOT_FOUND');
+
+    // The same must hold for every other visitor entry point into that tenant.
+    expect((await request(app).get(`/museums/${tenantB.museum.slug}`)).status).toBe(404);
+    expect((await request(app).get(`/narrate/room/${roomB1.id}`)).status).toBe(404);
+    expect(
+      (
+        await request(app)
+          .post('/chat')
+          .send({ waypointId: roomB1.id, question: 'Is this reachable?' })
+      ).status,
+    ).toBe(404);
+  });
 
   it("Case 10: suspended museum's admin using a token issued before suspension -> 403", async () => {
     const { system, tenantB } = await seedScenario();

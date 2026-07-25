@@ -11,6 +11,13 @@ const productionBase = {
   DATABASE_URL: 'postgresql://user:pass@db.example.com:5432/adwa',
   JWT_SECRET: 'a'.repeat(48),
   JWT_EXPIRES_IN: '1h',
+  // Without these the provider adapters fall back to canned output, which the
+  // guards below refuse in production.
+  LLM_API_KEY: 'sk-live-key',
+  ELEVENLABS_API_KEY: 'el-live-key',
+  STORAGE_PROVIDER: 's3',
+  STORAGE_BUCKET: 'adwa-audio',
+  STORAGE_PUBLIC_BASE_URL: 'https://cdn.example.com',
 };
 
 function parse(overrides: Record<string, string>) {
@@ -85,6 +92,74 @@ describe('production boot guards', () => {
       ...productionBase,
       NODE_ENV: 'development',
       PAYMENTS_PROVIDER: 'fake',
+    });
+
+    expect(result.success).toBe(true);
+  });
+});
+
+// Without a key, the LLM and TTS adapters answer from canned offline output.
+// That is what keeps development and tests off the network, and it is also why
+// production must not be allowed to start that way: visitors would be read
+// invented answers with nothing logged as an error (dev2 integration).
+describe('production guards on the content providers', () => {
+  const chapaCredentials = {
+    PAYMENTS_PROVIDER: 'chapa',
+    CHAPA_SECRET_KEY: 'CHASECK-live-key',
+    CHAPA_RETURN_URL: 'https://adwa.example.com/billing/return',
+  };
+
+  it('refuses production without an LLM key, rather than serving fake answers', () => {
+    const result = envSchemaWithProductionGuards.safeParse({
+      ...productionBase,
+      ...chapaCredentials,
+      LLM_API_KEY: undefined,
+    });
+
+    expect(result.success).toBe(false);
+    expect(issuePaths(result)).toContain('LLM_API_KEY');
+  });
+
+  it('refuses production without a TTS key, rather than caching placeholder audio', () => {
+    const result = envSchemaWithProductionGuards.safeParse({
+      ...productionBase,
+      ...chapaCredentials,
+      ELEVENLABS_API_KEY: undefined,
+    });
+
+    expect(result.success).toBe(false);
+    expect(issuePaths(result)).toContain('ELEVENLABS_API_KEY');
+  });
+
+  it('refuses memory storage in production, where audio would vanish on restart', () => {
+    const result = envSchemaWithProductionGuards.safeParse({
+      ...productionBase,
+      ...chapaCredentials,
+      STORAGE_PROVIDER: 'memory',
+    });
+
+    expect(result.success).toBe(false);
+    expect(issuePaths(result)).toContain('STORAGE_PROVIDER');
+  });
+
+  it('requires a bucket and a public base URL whenever S3 is selected, in any environment', () => {
+    const result = envSchemaWithProductionGuards.safeParse({
+      ...productionBase,
+      NODE_ENV: 'development',
+      STORAGE_PROVIDER: 's3',
+      STORAGE_BUCKET: undefined,
+      STORAGE_PUBLIC_BASE_URL: undefined,
+    });
+
+    expect(issuePaths(result)).toEqual(
+      expect.arrayContaining(['STORAGE_BUCKET', 'STORAGE_PUBLIC_BASE_URL']),
+    );
+  });
+
+  it('accepts a fully configured production environment', () => {
+    const result = envSchemaWithProductionGuards.safeParse({
+      ...productionBase,
+      ...chapaCredentials,
     });
 
     expect(result.success).toBe(true);

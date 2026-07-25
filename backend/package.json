@@ -22,10 +22,12 @@
     "prisma:migrate": "prisma migrate dev",
     "seed": "tsx prisma/seed.ts",
     "reconcile": "tsx scripts/reconcile-payments.ts",
+    "pregenerate:narration": "tsx scripts/pregenerate-narration.ts",
     "test": "vitest run"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^9.1.0",
+    "@aws-sdk/client-s3": "^3.1095.0",
     "@prisma/adapter-pg": "^7.9.0",
     "@prisma/client": "^7.9.0",
     "bcrypt": "^6.0.0",

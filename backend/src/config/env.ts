@@ -45,19 +45,34 @@ const envSchema = z.object({
 
   LLM_PROVIDER: z.enum(['openai', 'addisai']).default('openai'),
   LLM_API_KEY: z.string().optional(),
-  LLM_MODEL: z.string().optional(),
+  LLM_MODEL: z.string().default('gpt-4o-mini'),
+  // Any OpenAI-compatible /chat/completions endpoint, so switching vendor
+  // (Gemini, Groq, OpenRouter, ...) is a .env change rather than a code change.
+  LLM_BASE_URL: z.url().default('https://api.openai.com/v1/chat/completions'),
+  // Models that reason before answering spend tokens on the reasoning, which
+  // otherwise truncates the visible answer at max_tokens (dev2 §12.1).
+  LLM_REASONING_TOKEN_HEADROOM: z.coerce.number().int().nonnegative().default(0),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
 
   TTS_PROVIDER: z.enum(['elevenlabs']).default('elevenlabs'),
   ELEVENLABS_API_KEY: z.string().optional(),
   ELEVENLABS_MODEL: z.string().default('eleven_flash_v2_5'),
-  ELEVENLABS_DEFAULT_VOICE_ID: z.string().optional(),
+  ELEVENLABS_DEFAULT_VOICE_ID: z.string().default('21m00Tcm4TlvDq8ikWAM'),
   TTS_TIMEOUT_MS: z.coerce.number().int().positive().default(20000),
 
-  STORAGE_PROVIDER: z.enum(['s3', 'memory']).default('s3'),
+  // Defaults to memory so development and tests need no bucket. The production
+  // guard below refuses to boot with it: process memory loses every cached
+  // narration on restart.
+  STORAGE_PROVIDER: z.enum(['s3', 'memory']).default('memory'),
   STORAGE_BUCKET: z.string().optional(),
   STORAGE_REGION: z.string().optional(),
   STORAGE_ENDPOINT: z.string().optional(),
+  // Required by S3-compatible vendors that address buckets by path (MinIO and
+  // some R2/B2 setups) rather than by subdomain.
+  STORAGE_FORCE_PATH_STYLE: z
+    .string()
+    .default('false')
+    .transform((value) => value === 'true'),
   STORAGE_ACCESS_KEY_ID: z.string().optional(),
   STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
   STORAGE_PUBLIC_BASE_URL: z.string().optional(),
@@ -118,7 +133,54 @@ export const envSchemaWithProductionGuards = envSchema.superRefine((data, ctx) =
     }
   }
 
+  // Selecting S3 without somewhere to put the objects, or any way to read them
+  // back, is a misconfiguration in any environment.
+  if (data.STORAGE_PROVIDER === 's3') {
+    if (!data.STORAGE_BUCKET) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['STORAGE_BUCKET'],
+        message: 'is required when STORAGE_PROVIDER=s3',
+      });
+    }
+    if (!data.STORAGE_PUBLIC_BASE_URL) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['STORAGE_PUBLIC_BASE_URL'],
+        message: 'is required when STORAGE_PROVIDER=s3 — cached audio URLs are built from it',
+      });
+    }
+  }
+
   if (data.NODE_ENV !== 'production') return;
+
+  // Without these keys the LLM and TTS adapters fall back to canned offline
+  // output, which is what keeps development and tests off the network. In
+  // production that same fallback would read invented answers aloud to
+  // visitors and cache placeholder bytes as if they were narration, with
+  // nothing logged as an error — so it is refused at boot instead.
+  if (!data.LLM_API_KEY) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['LLM_API_KEY'],
+      message: 'is required in production — without it the LLM adapter serves canned fake answers',
+    });
+  }
+  if (!data.ELEVENLABS_API_KEY) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['ELEVENLABS_API_KEY'],
+      message:
+        'is required in production — without it the TTS adapter serves placeholder audio bytes',
+    });
+  }
+  if (data.STORAGE_PROVIDER === 'memory') {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['STORAGE_PROVIDER'],
+      message: 'must not be "memory" in production — cached audio would not survive a restart',
+    });
+  }
 
   // The fake provider reports every checkout as paid, so leaving the default in
   // place would hand out paid tiers without taking any money. Refused at boot
