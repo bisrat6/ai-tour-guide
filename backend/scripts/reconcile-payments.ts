@@ -25,7 +25,8 @@ async function main(): Promise<void> {
   console.log(
     `[reconcile] scanned=${stats.scanned} applied=${stats.applied} ` +
       `stillPending=${stats.stillPending} expired=${stats.expired} ` +
-      `failed=${stats.failed} sweptToPastDue=${stats.sweptToPastDue}`,
+      `failed=${stats.failed} verifyErrors=${stats.verifyErrors} ` +
+      `sweptToPastDue=${stats.sweptToPastDue}`,
   );
 }
 

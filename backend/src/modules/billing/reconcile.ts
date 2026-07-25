@@ -11,6 +11,12 @@ import { applyPaidPayment } from './service.js';
 /** Young payments are left to the return-page poll. */
 export const MIN_AGE_MS = 5 * 60_000;
 export const EXPIRY_AGE_MS = 24 * 3_600_000;
+/**
+ * Backstop for payments the provider will not give a verdict on. Without it, a
+ * vendor that is permanently unreachable would leave rows PENDING for ever;
+ * with it, we still wait a week before assuming the worst.
+ */
+export const UNVERIFIABLE_AGE_MS = 7 * 24 * 3_600_000;
 
 export interface ReconcileStats {
   scanned: number;
@@ -18,11 +24,21 @@ export interface ReconcileStats {
   stillPending: number;
   expired: number;
   failed: number;
+  /** Verify calls that errored. Distinct from `failed`, which is a real "no". */
+  verifyErrors: number;
   sweptToPastDue: number;
 }
 
 export function emptyStats(): ReconcileStats {
-  return { scanned: 0, applied: 0, stillPending: 0, expired: 0, failed: 0, sweptToPastDue: 0 };
+  return {
+    scanned: 0,
+    applied: 0,
+    stillPending: 0,
+    expired: 0,
+    failed: 0,
+    verifyErrors: 0,
+    sweptToPastDue: 0,
+  };
 }
 
 interface ReconcileOptions {
@@ -67,16 +83,20 @@ export async function reconcilePending(
         stats.stillPending += 1;
       }
     } catch (err) {
-      stats.failed += 1;
+      stats.verifyErrors += 1;
       logger.error({ txRef: payment.txRef, err }, 'Reconciler could not verify payment');
     }
   }
 }
 
 /**
- * NOTE (carried over, see docs/d3-integration-audit.md): a verify call that
- * merely errors is treated as abandonment, so a genuinely paid transaction can
- * be marked EXPIRED and never re-checked.
+ * Retires checkouts the visitor never completed.
+ *
+ * A verify call that *errors* is not evidence of abandonment — treating it as
+ * such is how a genuinely paid transaction used to end up EXPIRED. Those rows
+ * are left PENDING for the next run instead, until UNVERIFIABLE_AGE_MS makes
+ * waiting longer pointless, and even then they are expired with a reason that
+ * says the payment was never verified rather than never made.
  */
 export async function expireAbandoned(
   stats: ReconcileStats,
@@ -84,7 +104,7 @@ export async function expireAbandoned(
 ): Promise<void> {
   const stale = await prisma.payment.findMany({
     where: { status: 'PENDING', createdAt: { lt: new Date(Date.now() - EXPIRY_AGE_MS) } },
-    select: { id: true, txRef: true },
+    select: { id: true, txRef: true, createdAt: true },
   });
 
   for (const payment of stale) {
@@ -93,28 +113,48 @@ export async function expireAbandoned(
       continue;
     }
 
-    let succeededLate = false;
+    let verdict: 'paid' | 'not_paid' | 'unknown';
     try {
       const verify = await getPaymentProvider().verify(payment.txRef);
-      succeededLate = verify.status === 'success';
-    } catch {
-      // Treated as abandoned.
+      verdict = verify.status === 'success' ? 'paid' : 'not_paid';
+    } catch (err) {
+      verdict = 'unknown';
+      logger.warn(
+        { txRef: payment.txRef, err },
+        'Could not verify a stale payment — leaving it pending for the next run',
+      );
     }
 
-    if (succeededLate) {
+    if (verdict === 'paid') {
       const result = await applyPaidPayment(payment.txRef).catch(() => ({ applied: false }));
       if (result.applied) {
         stats.applied += 1;
         logger.warn({ txRef: payment.txRef }, 'Recovered a paid transaction at the expiry cutoff');
-        continue;
+      } else {
+        // The provider says paid but we could not record it. Never expire that.
+        stats.verifyErrors += 1;
+        logger.error(
+          { txRef: payment.txRef },
+          'Provider reports this payment as paid but it could not be applied',
+        );
       }
+      continue;
+    }
+
+    const age = Date.now() - payment.createdAt.getTime();
+    if (verdict === 'unknown' && age < UNVERIFIABLE_AGE_MS) {
+      stats.verifyErrors += 1;
+      continue;
     }
 
     const updated = await prisma.payment.updateMany({
       where: { id: payment.id, status: 'PENDING' },
       data: {
         status: 'EXPIRED',
-        failureReason: 'Abandoned: no successful payment within 24 hours',
+        failureReason:
+          verdict === 'unknown'
+            ? `Abandoned: could not be verified within ${UNVERIFIABLE_AGE_MS / 3_600_000} hours`
+            : 'Abandoned: no successful payment within 24 hours',
       },
     });
 

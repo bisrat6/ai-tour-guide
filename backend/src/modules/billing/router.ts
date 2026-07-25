@@ -92,7 +92,11 @@ billingRouter.get(
       throw ApiError.crossTenant();
     }
 
-    if (payment.status === 'PENDING' && Date.now() - payment.createdAt.getTime() > 5000) {
+    // Any status but PAID is re-verified, not just PENDING: this is the path
+    // that recovers a payment an outage or an expiry sweep wrongly retired.
+    // It costs one provider verify per poll of an unpaid payment, which is
+    // acceptable for a single authenticated lookup.
+    if (payment.status !== 'PAID' && Date.now() - payment.createdAt.getTime() > 5000) {
       // Best-effort: a verify failure here should not fail the poll, the
       // reconciler will pick the payment up later.
       await applyPaidPayment(txRef, req.requestId).catch((err: unknown) => {

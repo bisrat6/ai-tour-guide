@@ -1,4 +1,4 @@
-import type { SubscriptionTier } from '@prisma/client';
+import { Prisma, type SubscriptionTier } from '@prisma/client';
 import { ulid } from 'ulid';
 import { env } from '../../config/env.js';
 import { ApiError } from '../../lib/errors.js';
@@ -18,15 +18,30 @@ interface ApplyResult {
 }
 
 /**
+ * Compared as decimals, not floats. Rounding a float to two places would accept
+ * 4500.004 as 4500.00, and parseFloat reads '4500abc' as 4500 — both of which a
+ * currency check has no business tolerating. An unparseable amount is a
+ * mismatch rather than a crash.
+ */
+function amountsMatch(expected: Prisma.Decimal, reported: string): boolean {
+  try {
+    return expected.equals(new Prisma.Decimal(reported));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The single entitlement path (dev3 §4.3), shared by the return-page poll and
- * the reconciler. Safe to call concurrently: the status change is a conditional
- * update on status = 'PENDING', so zero rows updated means someone else won and
- * the subscription is not extended twice.
+ * the reconciler.
  *
- * NOTE (carried over, see docs/d3-integration-audit.md): a payment that has
- * already reached EXPIRED or FAILED is never re-verified, and the reconciler
- * expires payments when a verify call merely errors. A genuinely paid
- * transaction can therefore become unrecoverable.
+ * PAID is the only terminal status. EXPIRED and FAILED both mean "we stopped
+ * waiting", not "the provider said no", so a payment in either state is still
+ * re-verified here — otherwise a vendor outage at the wrong moment, or an
+ * expiry sweep racing an in-flight apply, would strand money the visitor
+ * actually paid. Double-crediting is prevented instead by making every status
+ * change conditional on the row not already being PAID, so a caller that loses
+ * the race updates zero rows and reports it.
  */
 export async function applyPaidPayment(txRef: string, requestId?: string): Promise<ApplyResult> {
   const payment = await prisma.payment.findUnique({
@@ -35,7 +50,7 @@ export async function applyPaidPayment(txRef: string, requestId?: string): Promi
   });
 
   if (!payment) return { applied: false, reason: 'payment_not_found' };
-  if (payment.status !== 'PENDING') return { applied: false, reason: 'already_processed' };
+  if (payment.status === 'PAID') return { applied: false, reason: 'already_processed' };
 
   const provider = getPaymentProvider();
   let verifyResult: Awaited<ReturnType<typeof provider.verify>>;
@@ -52,28 +67,24 @@ export async function applyPaidPayment(txRef: string, requestId?: string): Promi
   }
 
   // Compared against the stored row rather than trusting the provider payload.
-  const expectedAmount = payment.amountEtb.toFixed(2);
-  const reportedAmount = Number.parseFloat(verifyResult.amount).toFixed(2);
+  const expectedAmount = payment.amountEtb;
+  const amountMatches = amountsMatch(expectedAmount, verifyResult.amount);
 
-  if (
-    verifyResult.status !== 'success' ||
-    verifyResult.currency !== 'ETB' ||
-    reportedAmount !== expectedAmount
-  ) {
+  if (verifyResult.status !== 'success' || verifyResult.currency !== 'ETB' || !amountMatches) {
     logger.error(
       {
         requestId,
         txRef,
         verifyStatus: verifyResult.status,
         verifyAmount: verifyResult.amount,
-        expectedAmount,
+        expectedAmount: expectedAmount.toFixed(2),
         currency: verifyResult.currency,
       },
       'Payment verify mismatch — not upgrading',
     );
 
     await prisma.payment.updateMany({
-      where: { txRef, status: 'PENDING' },
+      where: { txRef, status: { not: 'PAID' } },
       data: {
         status: 'FAILED',
         failureReason: `Verify mismatch: status=${verifyResult.status} amount=${verifyResult.amount} currency=${verifyResult.currency}`,
@@ -94,13 +105,16 @@ export async function applyPaidPayment(txRef: string, requestId?: string): Promi
 
   const applied = await prisma.$transaction(async (tx) => {
     const updated = await tx.payment.updateMany({
-      where: { txRef, status: 'PENDING' },
+      where: { txRef, status: { not: 'PAID' } },
       data: {
         status: 'PAID',
         paidAt: now,
         chapaReference: verifyResult.reference,
         periodStart,
         periodEnd,
+        // Cleared so a row recovered from EXPIRED or FAILED does not keep
+        // reading as a failure once it is paid.
+        failureReason: null,
       },
     });
 

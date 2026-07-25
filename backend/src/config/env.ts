@@ -95,8 +95,10 @@ const envSchema = z.object({
 /**
  * Configuration that is merely wrong in development but dangerous in
  * production, so it is rejected at boot rather than at first use.
+ *
+ * Exported so tests can assert the guards without booting a second process.
  */
-const envSchemaWithProductionGuards = envSchema.superRefine((data, ctx) => {
+export const envSchemaWithProductionGuards = envSchema.superRefine((data, ctx) => {
   // Selecting the real payment provider without its credentials is a
   // misconfiguration in any environment, so this one is not production-only.
   if (data.PAYMENTS_PROVIDER === 'chapa') {
@@ -118,6 +120,16 @@ const envSchemaWithProductionGuards = envSchema.superRefine((data, ctx) => {
 
   if (data.NODE_ENV !== 'production') return;
 
+  // The fake provider reports every checkout as paid, so leaving the default in
+  // place would hand out paid tiers without taking any money. Refused at boot
+  // rather than at first use: the first use is a granted subscription.
+  if (data.PAYMENTS_PROVIDER === 'fake') {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['PAYMENTS_PROVIDER'],
+      message: 'must not be "fake" in production — it grants paid tiers without taking payment',
+    });
+  }
   if (data.ENABLE_STUB_TICKET_VENDOR) {
     ctx.addIssue({
       code: 'custom',

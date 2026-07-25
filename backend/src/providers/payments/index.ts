@@ -6,11 +6,9 @@ import type { PaymentProvider } from './types.js';
 export type { PaymentProvider, FakePaymentProvider, FakePaymentMode } from './types.js';
 
 /**
- * NOTE (carried over from dev3's branch, see docs/d3-integration-audit.md):
- * PAYMENTS_PROVIDER defaults to 'fake' and nothing refuses 'fake' in
- * production, so a deploy that forgets to set it would grant paid tiers with no
- * money taken. Left as-is here because this port deliberately does not change
- * billing behaviour; it needs a decision and a production guard.
+ * The default is 'fake' so development and tests need no Chapa account. That
+ * default is safe only because config/env.ts refuses to boot a production
+ * process with it — the fake provider reports every checkout as paid.
  */
 export function getPaymentProvider(): PaymentProvider {
   return env.PAYMENTS_PROVIDER === 'fake' ? fakePayment : chapaPayment;

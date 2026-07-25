@@ -16,9 +16,9 @@ type ResourceType = 'room' | 'item' | 'adminUser';
  * - An inactive subscription blocks all creates.
  *
  * NOT CURRENTLY MOUNTED on any route — see docs/d3-integration-audit.md for
- * why, and for the two known weaknesses carried over from dev3's branch: the
- * count-then-create race, and the item branch silently passing when the request
- * has no roomId.
+ * why. One carried-over weakness remains: the count and the create are not in a
+ * single transaction, so two concurrent creates can both pass a check at the
+ * cap.
  *
  * @param getMuseumId resolves the owning museum, ideally via resolveMuseum
  *   rather than trusting a body field.
@@ -58,21 +58,42 @@ export function requireWithinTierLimit(
       }
 
       if (resource === 'item' && limits.maxItemsPerRoom !== null) {
-        // The item cap is per room, so it needs a roomId to count against.
-        const { roomId } = req.body as { roomId?: string };
-        if (roomId) {
-          const current = await prisma.item.count({ where: { roomId } });
-          if (current >= limits.maxItemsPerRoom) {
-            next(
-              ApiError.tierLimitExceeded({
-                limit: 'maxItemsPerRoom',
-                tier: museum.tier,
-                allowed: limits.maxItemsPerRoom,
-                current,
-              }),
-            );
-            return;
-          }
+        // The cap is per room, so it needs a roomId to count against. A missing
+        // one is refused rather than waved through: silently skipping the check
+        // would let any request omit the field to bypass the limit.
+        const { roomId } = req.body as { roomId?: unknown };
+        if (typeof roomId !== 'string' || roomId.length === 0) {
+          next(
+            ApiError.validation(
+              [{ path: 'roomId', message: 'Required to check the per-room item limit.' }],
+              'roomId is required.',
+            ),
+          );
+          return;
+        }
+
+        // Scoped to the resolved museum, so a foreign roomId cannot be used to
+        // count against another tenant's room instead of the caller's own.
+        const room = await prisma.room.findFirst({
+          where: { id: roomId, museumId: museum.id },
+          select: { id: true },
+        });
+        if (!room) {
+          next(ApiError.notFound('Room not found.'));
+          return;
+        }
+
+        const current = await prisma.item.count({ where: { roomId: room.id } });
+        if (current >= limits.maxItemsPerRoom) {
+          next(
+            ApiError.tierLimitExceeded({
+              limit: 'maxItemsPerRoom',
+              tier: museum.tier,
+              allowed: limits.maxItemsPerRoom,
+              current,
+            }),
+          );
+          return;
         }
       }
 

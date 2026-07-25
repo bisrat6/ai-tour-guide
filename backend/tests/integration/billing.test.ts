@@ -7,7 +7,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app.js';
 import { signAuthToken } from '../../src/lib/jwt.js';
 import { prisma } from '../../src/lib/prisma.js';
-import { emptyStats, expireAbandoned, runReconciler } from '../../src/modules/billing/reconcile.js';
+import {
+  emptyStats,
+  expireAbandoned,
+  runReconciler,
+  UNVERIFIABLE_AGE_MS,
+} from '../../src/modules/billing/reconcile.js';
 import { applyPaidPayment } from '../../src/modules/billing/service.js';
 import { fakePayment } from '../../src/providers/payments/fake.js';
 import { resetBreakersForTests } from '../../src/providers/resilience.js';
@@ -321,6 +326,133 @@ describe('billing', () => {
     });
   });
 
+  // PAID is the only terminal status. EXPIRED and FAILED mean "we stopped
+  // waiting", so money that did arrive must still be recoverable from either.
+  describe('recovering a wrongly retired payment', () => {
+    it.each([['EXPIRED' as const], ['FAILED' as const]])(
+      'applies a %s payment the provider reports as paid',
+      async (status) => {
+        const { museum, admin } = await seedMuseumWithAdmin({
+          slug: `rec-${status.toLowerCase()}`,
+        });
+        const payment = await seedPayment({
+          museumId: museum.id,
+          txRef: `adwa-rec-${status}-PRO-1`,
+          initiatedByAdminId: admin.id,
+          status,
+        });
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: { failureReason: 'Abandoned: no successful payment within 24 hours' },
+        });
+        fakePayment.setMode('success');
+
+        expect(await applyPaidPayment(payment.txRef)).toEqual({ applied: true });
+
+        const fresh = await prisma.payment.findUnique({ where: { id: payment.id } });
+        expect(fresh?.status).toBe('PAID');
+        expect(fresh?.paidAt).not.toBeNull();
+        // The stale reason would otherwise make a paid row still read as failed.
+        expect(fresh?.failureReason).toBeNull();
+
+        const updated = await prisma.museum.findUnique({ where: { id: museum.id } });
+        expect(updated?.tier).toBe('PRO');
+      },
+    );
+
+    it('never re-applies a PAID payment', async () => {
+      const { museum, admin } = await seedMuseumWithAdmin({ slug: 'paid-terminal', tier: 'PRO' });
+      const payment = await seedPayment({
+        museumId: museum.id,
+        txRef: 'adwa-paid-terminal-PRO-1',
+        initiatedByAdminId: admin.id,
+        status: 'PAID',
+      });
+      fakePayment.setMode('success');
+
+      expect(await applyPaidPayment(payment.txRef)).toEqual({
+        applied: false,
+        reason: 'already_processed',
+      });
+      expect(fakePayment.getVerifyCallCount()).toBe(0);
+
+      const unchanged = await prisma.museum.findUnique({ where: { id: museum.id } });
+      expect(unchanged?.subscriptionRenewsAt).toBeNull();
+    });
+
+    it('still applies when an expiry sweep retires the payment mid-flight', async () => {
+      // The race that used to strand paid transactions: the sweep wins, and the
+      // apply then finds nothing left in PENDING to update.
+      const { museum, admin } = await seedMuseumWithAdmin({ slug: 'sweeprace' });
+      const payment = await seedPayment({
+        museumId: museum.id,
+        txRef: 'adwa-sweeprace-PRO-1',
+        initiatedByAdminId: admin.id,
+        createdAt: new Date(Date.now() - 25 * 3_600_000),
+      });
+      fakePayment.setMode('success');
+
+      const stats = emptyStats();
+      const [applyResult] = await Promise.all([
+        applyPaidPayment(payment.txRef),
+        expireAbandoned(stats),
+      ]);
+
+      // Whichever order they interleave in, the payment ends PAID and upgraded.
+      const fresh = await prisma.payment.findUnique({ where: { id: payment.id } });
+      expect(fresh?.status).toBe('PAID');
+      const updated = await prisma.museum.findUnique({ where: { id: museum.id } });
+      expect(updated?.tier).toBe('PRO');
+      // Exactly one of the two paths credited it.
+      const credits = (applyResult.applied ? 1 : 0) + stats.applied;
+      expect(credits).toBe(1);
+
+      const audits = await prisma.adminAuditLog.findMany({
+        where: { museumId: museum.id, entityType: 'Museum' },
+      });
+      expect(audits).toHaveLength(1);
+    });
+  });
+
+  describe('amount verification', () => {
+    it('rejects an amount that only matches once rounded', async () => {
+      const { museum, admin } = await seedMuseumWithAdmin({ slug: 'round' });
+      const payment = await seedPayment({
+        museumId: museum.id,
+        txRef: 'adwa-round-PRO-1',
+        initiatedByAdminId: admin.id,
+      });
+      // Rounds to the expected 4500.00 at two decimal places, so a float
+      // comparison would have accepted it.
+      fakePayment.setVerifyAmount('4500.004');
+
+      expect(await applyPaidPayment(payment.txRef)).toEqual({
+        applied: false,
+        reason: 'verify_mismatch',
+      });
+      const unchanged = await prisma.museum.findUnique({ where: { id: museum.id } });
+      expect(unchanged?.tier).toBe('BASIC');
+    });
+
+    it('rejects a non-numeric amount instead of throwing', async () => {
+      const { museum, admin } = await seedMuseumWithAdmin({ slug: 'garbage' });
+      const payment = await seedPayment({
+        museumId: museum.id,
+        txRef: 'adwa-garbage-PRO-1',
+        initiatedByAdminId: admin.id,
+      });
+      // parseFloat would read this as 4500 and upgrade the museum.
+      fakePayment.setVerifyAmount('4500-not-a-number');
+
+      expect(await applyPaidPayment(payment.txRef)).toEqual({
+        applied: false,
+        reason: 'verify_mismatch',
+      });
+      const unchanged = await prisma.museum.findUnique({ where: { id: museum.id } });
+      expect(unchanged?.tier).toBe('BASIC');
+    });
+  });
+
   describe('GET /admin/billing/payments/:txRef', () => {
     it('does not verify a payment younger than the poll threshold', async () => {
       const { museum, admin, token } = await seedMuseumWithAdmin({ slug: 'young' });
@@ -556,6 +688,74 @@ describe('billing', () => {
       expect(fakePayment.getVerifyCallCount()).toBe(0);
       const fresh = await prisma.payment.findUnique({ where: { id: payment.id } });
       expect(fresh?.status).toBe('PENDING');
+    });
+
+    it('does not expire a stale payment when the verify call errors', async () => {
+      // The vendor being unreachable says nothing about whether the visitor
+      // paid, so expiring on it is how paid money used to be thrown away.
+      const { museum, admin } = await seedMuseumWithAdmin({ slug: 'vendordown' });
+      const payment = await seedPayment({
+        museumId: museum.id,
+        txRef: 'adwa-vendordown-PRO-1',
+        initiatedByAdminId: admin.id,
+        createdAt: new Date(Date.now() - 25 * 3_600_000),
+      });
+      fakePayment.setMode('timeout');
+
+      const stats = emptyStats();
+      await expireAbandoned(stats);
+
+      expect(stats.expired).toBe(0);
+      expect(stats.verifyErrors).toBe(1);
+      const fresh = await prisma.payment.findUnique({ where: { id: payment.id } });
+      expect(fresh?.status).toBe('PENDING');
+      expect(fresh?.failureReason).toBeNull();
+    });
+
+    it('recovers that same payment on a later run once the vendor answers', async () => {
+      const { museum, admin } = await seedMuseumWithAdmin({ slug: 'vendorback' });
+      const payment = await seedPayment({
+        museumId: museum.id,
+        txRef: 'adwa-vendorback-PRO-1',
+        initiatedByAdminId: admin.id,
+        createdAt: new Date(Date.now() - 25 * 3_600_000),
+      });
+
+      fakePayment.setMode('timeout');
+      await expireAbandoned(emptyStats());
+      resetBreakersForTests();
+
+      fakePayment.setMode('success');
+      const second = emptyStats();
+      await expireAbandoned(second);
+
+      expect(second.applied).toBe(1);
+      const fresh = await prisma.payment.findUnique({ where: { id: payment.id } });
+      expect(fresh?.status).toBe('PAID');
+      const updated = await prisma.museum.findUnique({ where: { id: museum.id } });
+      expect(updated?.tier).toBe('PRO');
+    });
+
+    it('expires an unverifiable payment once waiting longer is pointless', async () => {
+      const { museum, admin } = await seedMuseumWithAdmin({ slug: 'unverifiable' });
+      const payment = await seedPayment({
+        museumId: museum.id,
+        txRef: 'adwa-unverifiable-PRO-1',
+        initiatedByAdminId: admin.id,
+        createdAt: new Date(Date.now() - UNVERIFIABLE_AGE_MS - 3_600_000),
+      });
+      fakePayment.setMode('timeout');
+
+      const stats = emptyStats();
+      await expireAbandoned(stats);
+
+      expect(stats.expired).toBe(1);
+      const fresh = await prisma.payment.findUnique({ where: { id: payment.id } });
+      expect(fresh?.status).toBe('EXPIRED');
+      // The reason must not claim the visitor never paid — we never found out.
+      expect(fresh?.failureReason).toMatch(/could not be verified/);
+      const unchanged = await prisma.museum.findUnique({ where: { id: museum.id } });
+      expect(unchanged?.tier).toBe('BASIC');
     });
   });
 });

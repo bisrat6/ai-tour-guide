@@ -27,12 +27,14 @@ Developer 3's billing and ticketing work has since been integrated on top:
 subscription tiers with Chapa checkout (`/admin/billing/*`), a payment
 reconciler (`npm run reconcile`), and visitor ticket validation
 (`POST /tickets/validate`) behind an SSRF guard. That branch was ported rather
-than merged, and several billing defects were carried across knowingly —
-including one critical one, that `PAYMENTS_PROVIDER` defaults to `fake` and is
-not refused in production. Read
+than merged; the review found ten defects in it, and the critical and high ones
+have since been fixed — a production process now refuses to boot with the fake
+payment provider, and a paid transaction can no longer be stranded by a vendor
+outage or an expiry sweep. Read
 [docs/d3-integration-audit.md](../docs/d3-integration-audit.md) before deploying
-or touching billing. Tier limits are implemented and tested but deliberately
-enforced on no route yet; that document explains why.
+or touching billing: it records each fix, the four issues left open (including
+the still-missing payment webhook), and why tier limits are implemented and
+tested but enforced on no route yet.
 
 ## Quick start
 

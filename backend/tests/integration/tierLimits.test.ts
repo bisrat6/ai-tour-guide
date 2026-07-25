@@ -18,7 +18,14 @@ import { errorHandler } from '../../src/middleware/errorHandler.js';
 import { requestId } from '../../src/middleware/requestId.js';
 import { requireAuth } from '../../src/middleware/requireAuth.js';
 import { requireWithinTierLimit } from '../../src/middleware/requireWithinTierLimit.js';
-import { ensureTestSchema, resetDatabase, seedAdmin, seedMuseum, seedRoom } from '../helpers/db.js';
+import {
+  ensureTestSchema,
+  resetDatabase,
+  seedAdmin,
+  seedItem,
+  seedMuseum,
+  seedRoom,
+} from '../helpers/db.js';
 
 const PASSWORD = 'correct-horse-battery-staple';
 
@@ -58,6 +65,29 @@ function buildTierLimitApp(): Express {
         },
       });
       res.status(201).json(room);
+    }),
+  );
+
+  // The per-room item cap, which needs a roomId in the body to count against.
+  app.post(
+    '/test/items',
+    requireAuth,
+    requireWithinTierLimit('item', async (req) => {
+      if (!req.admin?.museumId) throw ApiError.forbidden('No museum on this account.');
+      return req.admin.museumId;
+    }),
+    asyncHandler(async (req, res) => {
+      const body = req.body as { roomId: string; name: string };
+      const item = await prisma.item.create({
+        data: {
+          roomId: body.roomId,
+          name: body.name,
+          shortDescription: `${body.name} short description`,
+          detailText: `${body.name} detail text`,
+          displayOrder: 1,
+        },
+      });
+      res.status(201).json(item);
     }),
   );
 
@@ -219,6 +249,90 @@ describe('requireWithinTierLimit', () => {
 
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('TIER_LIMIT_EXCEEDED');
+  });
+
+  describe('the per-room item cap', () => {
+    it('refuses a create with no roomId rather than skipping the check', async () => {
+      const { token } = await seedMuseumAtRoomCount({
+        slug: 'noroom',
+        tier: 'BASIC',
+        roomCount: 1,
+      });
+
+      const res = await request(app)
+        .post('/test/items')
+        .set(authHeader(token))
+        .send({ name: 'Unattached' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([
+          { path: 'roomId', message: 'Required to check the per-room item limit.' },
+        ]),
+      );
+      expect(await prisma.item.count()).toBe(0);
+    });
+
+    it('refuses a roomId belonging to another museum', async () => {
+      const mine = await seedMuseumAtRoomCount({ slug: 'mine', tier: 'PRO', roomCount: 1 });
+      const theirs = await seedMuseumAtRoomCount({ slug: 'theirs', tier: 'PRO', roomCount: 1 });
+      const theirRoom = await prisma.room.findFirstOrThrow({
+        where: { museumId: theirs.museum.id },
+      });
+
+      const res = await request(app)
+        .post('/test/items')
+        .set(authHeader(mine.token))
+        .send({ roomId: theirRoom.id, name: 'Borrowed room' });
+
+      expect(res.status).toBe(404);
+      expect(await prisma.item.count()).toBe(0);
+    });
+
+    it('rejects an item once the room is at the cap', async () => {
+      const { museum, token } = await seedMuseumAtRoomCount({
+        slug: 'itemcap',
+        tier: 'BASIC',
+        roomCount: 1,
+      });
+      const room = await prisma.room.findFirstOrThrow({ where: { museumId: museum.id } });
+      // BASIC allows 20 items per room.
+      for (let i = 1; i <= 20; i += 1) {
+        await seedItem({ roomId: room.id, name: `Item ${i}`, displayOrder: i });
+      }
+
+      const res = await request(app)
+        .post('/test/items')
+        .set(authHeader(token))
+        .send({ roomId: room.id, name: 'Twenty-first' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('TIER_LIMIT_EXCEEDED');
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([
+          { path: 'limit', message: 'maxItemsPerRoom' },
+          { path: 'allowed', message: '20' },
+          { path: 'current', message: '20' },
+        ]),
+      );
+    });
+
+    it('allows an item below the cap', async () => {
+      const { museum, token } = await seedMuseumAtRoomCount({
+        slug: 'itemok',
+        tier: 'BASIC',
+        roomCount: 1,
+      });
+      const room = await prisma.room.findFirstOrThrow({ where: { museumId: museum.id } });
+
+      const res = await request(app)
+        .post('/test/items')
+        .set(authHeader(token))
+        .send({ roomId: room.id, name: 'First' });
+
+      expect(res.status).toBe(201);
+    });
   });
 
   it('keeps existing rooms after a downgrade but refuses new ones', async () => {
