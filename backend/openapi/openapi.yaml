@@ -1,0 +1,1285 @@
+openapi: 3.1.0
+info:
+  version: 0.1.0
+  title: Adwa AI Tour Guide — Admin API
+  description: Developer 1’s admin surface (auth, museums, rooms, items).
+    Generated from Zod schemas — do not hand-edit. See
+    docs/backend-implementation-plan.md and developer1-detailed-plan.md.
+servers:
+  - url: /
+    description: Relative to wherever the API is deployed
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Admin JWT from POST /admin/login. See §8.
+  schemas:
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT, 12-hour expiry.
+        role:
+          $ref: "#/components/schemas/AdminRole"
+        museumId:
+          type:
+            - string
+            - "null"
+          description: null for SYSTEM_ADMIN.
+        expiresAt:
+          type: string
+          format: date-time
+      required:
+        - token
+        - role
+        - museumId
+        - expiresAt
+    AdminRole:
+      type: string
+      enum:
+        - SYSTEM_ADMIN
+        - MUSEUM_ADMIN
+    ErrorEnvelope:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+              example: Invalid credentials.
+            code:
+              $ref: "#/components/schemas/ErrorCode"
+            requestId:
+              type: string
+              example: 01HQZXK7N8VJYB3F9G6R2T4W5M
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  path:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - path
+                  - message
+              description: Present only for VALIDATION_ERROR, one entry per invalid field.
+          required:
+            - message
+            - code
+            - requestId
+      required:
+        - error
+      description: Shape of every non-2xx response, from every route. See §7.1.
+    ErrorCode:
+      type: string
+      enum:
+        - VALIDATION_ERROR
+        - UNAUTHENTICATED
+        - INVALID_CREDENTIALS
+        - FORBIDDEN
+        - CROSS_TENANT_ACCESS
+        - NOT_FOUND
+        - CONFLICT
+        - ROOM_REFERENCED
+        - INVALID_ROOM_SEQUENCE
+        - RATE_LIMITED
+        - INTERNAL_ERROR
+        - UPSTREAM_FAILURE
+        - UPSTREAM_UNAVAILABLE
+      description: Machine-readable error code. See §7.2 of the backend implementation plan.
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          example: admin@adwamuseum.org
+        password:
+          type: string
+          minLength: 1
+          example: correct-horse-battery-staple
+      required:
+        - email
+        - password
+    ListMuseumsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Museum"
+        nextCursor:
+          type:
+            - string
+            - "null"
+      required:
+        - data
+        - nextCursor
+    Museum:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Adwa Victory Memorial Museum
+        slug:
+          type: string
+          example: adwa
+        status:
+          $ref: "#/components/schemas/MuseumStatus"
+        ticketValidationUrl:
+          type:
+            - string
+            - "null"
+          format: uri
+        systemPrompt:
+          type:
+            - string
+            - "null"
+        defaultVoiceId:
+          type:
+            - string
+            - "null"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - slug
+        - status
+        - ticketValidationUrl
+        - systemPrompt
+        - defaultVoiceId
+        - createdAt
+        - updatedAt
+    MuseumStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - SUSPENDED
+    CreateMuseumResponse:
+      type: object
+      properties:
+        museum:
+          $ref: "#/components/schemas/Museum"
+        admin:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+              format: email
+            role:
+              type: string
+              enum:
+                - MUSEUM_ADMIN
+            museumId:
+              type: string
+              format: uuid
+          required:
+            - id
+            - email
+            - role
+            - museumId
+      required:
+        - museum
+        - admin
+    CreateMuseumRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+          minLength: 1
+          pattern: ^[a-z0-9-]+$
+        adminEmail:
+          type: string
+          format: email
+        adminPassword:
+          type: string
+          minLength: 8
+      required:
+        - name
+        - slug
+        - adminEmail
+        - adminPassword
+    UpdateMuseumRequest:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/MuseumStatus"
+        ticketValidationUrl:
+          type:
+            - string
+            - "null"
+          format: uri
+        systemPrompt:
+          type:
+            - string
+            - "null"
+        defaultVoiceId:
+          type:
+            - string
+            - "null"
+    AdminUser:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum:
+            - SYSTEM_ADMIN
+            - MUSEUM_ADMIN
+        museumId:
+          type:
+            - string
+            - "null"
+          format: uuid
+      required:
+        - id
+        - email
+        - role
+        - museumId
+    AddMuseumAdminRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+      required:
+        - email
+        - password
+    ListRoomsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Room"
+        nextCursor:
+          type:
+            - string
+            - "null"
+      required:
+        - data
+        - nextCursor
+    Room:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        legacyId:
+          type:
+            - string
+            - "null"
+          description: Original id from data/*.json, see §16.1.
+        museumId:
+          type: string
+          format: uuid
+        storyOrder:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+        roomOverviewText:
+          type: string
+          description: Grounding prose for chat.
+        narrationScript:
+          type: string
+          description: Spoken script sent to TTS.
+        roomAudioUrl:
+          type:
+            - string
+            - "null"
+          format: uri
+        nextRoomId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - legacyId
+        - museumId
+        - storyOrder
+        - title
+        - roomOverviewText
+        - narrationScript
+        - roomAudioUrl
+        - nextRoomId
+        - createdAt
+        - updatedAt
+    CreateRoomRequest:
+      type: object
+      properties:
+        museumId:
+          type: string
+          format: uuid
+          description: Required for SYSTEM_ADMIN, taken from the token for MUSEUM_ADMIN.
+        title:
+          type: string
+          minLength: 1
+        roomOverviewText:
+          type: string
+          minLength: 1
+        narrationScript:
+          type: string
+          minLength: 1
+        storyOrder:
+          type: integer
+          minimum: 1
+        nextRoomId:
+          type:
+            - string
+            - "null"
+          format: uuid
+      required:
+        - title
+        - roomOverviewText
+        - narrationScript
+        - storyOrder
+    UpdateRoomRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+        roomOverviewText:
+          type: string
+          minLength: 1
+        narrationScript:
+          type: string
+          minLength: 1
+        storyOrder:
+          type: integer
+          minimum: 1
+        nextRoomId:
+          type:
+            - string
+            - "null"
+          format: uuid
+    ReorderItemsRequest:
+      type: object
+      properties:
+        itemIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+      required:
+        - itemIds
+    ListItemsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Item"
+        nextCursor:
+          type:
+            - string
+            - "null"
+      required:
+        - data
+        - nextCursor
+    Item:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        legacyId:
+          type:
+            - string
+            - "null"
+        roomId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        shortDescription:
+          type: string
+        detailText:
+          type: string
+        imageUrl:
+          type:
+            - string
+            - "null"
+          format: uri
+        displayOrder:
+          type: integer
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - legacyId
+        - roomId
+        - name
+        - shortDescription
+        - detailText
+        - imageUrl
+        - displayOrder
+        - createdAt
+        - updatedAt
+    CreateItemRequest:
+      type: object
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        shortDescription:
+          type: string
+          minLength: 1
+        detailText:
+          type: string
+          minLength: 1
+        imageUrl:
+          type:
+            - string
+            - "null"
+          format: uri
+        displayOrder:
+          type: integer
+          minimum: 0
+      required:
+        - roomId
+        - name
+        - shortDescription
+        - detailText
+    UpdateItemRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        shortDescription:
+          type: string
+          minLength: 1
+        detailText:
+          type: string
+          minLength: 1
+        imageUrl:
+          type:
+            - string
+            - "null"
+          format: uri
+        displayOrder:
+          type: integer
+          minimum: 0
+  parameters: {}
+paths:
+  /admin/login:
+    post:
+      tags:
+        - Auth
+      summary: Admin login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited (RATE_LIMITED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/museums:
+    get:
+      tags:
+        - Museums
+      summary: List museums (SYSTEM_ADMIN only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+            description: Page size. Defaults to 50, capped at 200.
+          required: false
+          description: Page size. Defaults to 50, capped at 200.
+          name: limit
+          in: query
+        - schema:
+            type: string
+            description: Opaque cursor from a previous page.
+          required: false
+          description: Opaque cursor from a previous page.
+          name: cursor
+          in: query
+      responses:
+        "200":
+          description: Paginated list of museums.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListMuseumsResponse"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags:
+        - Museums
+      summary: Create a museum and its first MUSEUM_ADMIN (SYSTEM_ADMIN only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMuseumRequest"
+      responses:
+        "201":
+          description: Museum and admin created in one transaction.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateMuseumResponse"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Unique constraint conflict, or a room delete blocked by a reference
+            (CONFLICT / ROOM_REFERENCED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/museums/{id}:
+    get:
+      tags:
+        - Museums
+      summary: Get a museum by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The museum.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Museum"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      tags:
+        - Museums
+      summary: Update a museum. status is SYSTEM_ADMIN-only; the rest are writable by
+        the museum’s own admin.
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: id
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMuseumRequest"
+      responses:
+        "200":
+          description: Updated museum.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Museum"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/museums/{id}/admins:
+    post:
+      tags:
+        - Museums
+      summary: Add a further admin to an existing museum (SYSTEM_ADMIN only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: id
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddMuseumAdminRequest"
+      responses:
+        "201":
+          description: Admin created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Unique constraint conflict, or a room delete blocked by a reference
+            (CONFLICT / ROOM_REFERENCED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/rooms:
+    get:
+      tags:
+        - Rooms
+      summary: List rooms, scoped to the caller’s museum unless SYSTEM_ADMIN
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+            description: Page size. Defaults to 50, capped at 200.
+          required: false
+          description: Page size. Defaults to 50, capped at 200.
+          name: limit
+          in: query
+        - schema:
+            type: string
+            description: Opaque cursor from a previous page.
+          required: false
+          description: Opaque cursor from a previous page.
+          name: cursor
+          in: query
+        - schema:
+            type: string
+            format: uuid
+            description: Required for SYSTEM_ADMIN. Ignored for MUSEUM_ADMIN —
+              req.admin.museumId is used instead (§14.2).
+          required: false
+          description: Required for SYSTEM_ADMIN. Ignored for MUSEUM_ADMIN —
+            req.admin.museumId is used instead (§14.2).
+          name: museumId
+          in: query
+      responses:
+        "200":
+          description: Paginated list of rooms.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListRoomsResponse"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags:
+        - Rooms
+      summary: Create a room
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoomRequest"
+      responses:
+        "201":
+          description: Room created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Unique constraint conflict, or a room delete blocked by a reference
+            (CONFLICT / ROOM_REFERENCED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: nextRoomId crosses museums or forms a cycle (INVALID_ROOM_SEQUENCE).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/rooms/{id}:
+    get:
+      tags:
+        - Rooms
+      summary: Get a room by id, including items
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The room.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      tags:
+        - Rooms
+      summary: Update a room
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: id
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRoomRequest"
+      responses:
+        "200":
+          description: Updated room.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Unique constraint conflict, or a room delete blocked by a reference
+            (CONFLICT / ROOM_REFERENCED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: nextRoomId crosses museums or forms a cycle (INVALID_ROOM_SEQUENCE).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags:
+        - Rooms
+      summary: Delete a room
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: id
+          in: path
+        - schema:
+            type:
+              - boolean
+              - "null"
+            description: Null out other rooms’ nextRoomId instead of returning 409
+              ROOM_REFERENCED.
+          required: false
+          description: Null out other rooms’ nextRoomId instead of returning 409
+            ROOM_REFERENCED.
+          name: force
+          in: query
+      responses:
+        "204":
+          description: Room deleted.
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Unique constraint conflict, or a room delete blocked by a reference
+            (CONFLICT / ROOM_REFERENCED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/rooms/{id}/items/order:
+    patch:
+      tags:
+        - Rooms
+      summary: Bulk-reorder a room’s items in one transaction
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: id
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderItemsRequest"
+      responses:
+        "200":
+          description: Items reordered.
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/items:
+    get:
+      tags:
+        - Items
+      summary: List items for a room
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+            description: Page size. Defaults to 50, capped at 200.
+          required: false
+          description: Page size. Defaults to 50, capped at 200.
+          name: limit
+          in: query
+        - schema:
+            type: string
+            description: Opaque cursor from a previous page.
+          required: false
+          description: Opaque cursor from a previous page.
+          name: cursor
+          in: query
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: roomId
+          in: query
+      responses:
+        "200":
+          description: Paginated list of items.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListItemsResponse"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags:
+        - Items
+      summary: Create an item
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateItemRequest"
+      responses:
+        "201":
+          description: Item created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/items/{id}:
+    patch:
+      tags:
+        - Items
+      summary: Update an item
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: id
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateItemRequest"
+      responses:
+        "200":
+          description: Updated item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags:
+        - Items
+      summary: Delete an item
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: id
+          in: path
+      responses:
+        "204":
+          description: Item deleted.
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+webhooks: {}

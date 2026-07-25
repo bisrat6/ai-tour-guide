@@ -1,0 +1,42 @@
+{
+  "name": "adwa-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Adwa AI Tour Guide backend — multi-tenant admin API, visitor content, and grounded chat.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "generate:openapi": "tsx scripts/generate-openapi.ts",
+    "mock": "tsx watch mock/server.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@asteasolutions/zod-to-openapi": "^9.1.0",
+    "cors": "^2.8.6",
+    "express": "^4.22.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.25",
+    "@types/node": "^26.1.1",
+    "@typescript-eslint/eslint-plugin": "^8.65.0",
+    "@typescript-eslint/parser": "^8.65.0",
+    "eslint": "^10.8.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.7.0",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10",
+    "yaml": "^2.9.0"
+  }
+}
