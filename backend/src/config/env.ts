@@ -32,6 +32,9 @@ const envSchema = z.object({
 
   SEED_SYSTEM_ADMIN_EMAIL: z.email().optional(),
   SEED_SYSTEM_ADMIN_PASSWORD: z.string().min(8).optional(),
+  // Shared password for the one MUSEUM_ADMIN seeded per museum (§16.3) —
+  // local development convenience only, never used in production seeding.
+  SEED_MUSEUM_ADMIN_PASSWORD: z.string().min(8).optional(),
 
   LLM_PROVIDER: z.enum(['openai', 'addisai']).default('openai'),
   LLM_API_KEY: z.string().optional(),

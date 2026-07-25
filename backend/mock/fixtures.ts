@@ -1,65 +1,12 @@
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { deterministicUuid } from './deterministicId.js';
+import {
+  extractSystemPrompt,
+  loadWaypoints,
+  MUSEUM_SEED_SPECS,
+} from '../src/shared/museumSeedData.js';
 import type { Museum } from '../src/modules/museums/schemas.js';
 import type { Room } from '../src/modules/rooms/schemas.js';
 import type { Item } from '../src/modules/items/schemas.js';
-
-const dataDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'data');
-
-interface RawItem {
-  id: string;
-  name: string;
-  short_description: string;
-  detail_text: string;
-  image_url: string | null;
-}
-
-interface RawWaypoint {
-  id: string;
-  story_order: number;
-  title: string;
-  room_overview_text: string;
-  room_narration_script: string;
-  next_waypoint_id: string | null;
-  items: RawItem[];
-}
-
-export interface MuseumFixtureSpec {
-  slug: string;
-  name: string;
-  waypointsFile: string;
-  systemPromptFile: string;
-  adminEmail: string;
-}
-
-// The two content sets already sitting in data/. Both use room_1..room_4,
-// which is the exact ID collision docs/backend-implementation-plan.md §16.1
-// resolves via legacyId — the mock reproduces that resolution so client
-// developers see the same shape the real seed will produce (§2.1 C3).
-const MUSEUM_SPECS: MuseumFixtureSpec[] = [
-  {
-    slug: 'adwa',
-    name: 'Adwa Victory Memorial Museum',
-    waypointsFile: 'waypoints_adwa.json',
-    systemPromptFile: 'system_prompt_adwa.md',
-    adminEmail: 'admin@adwamuseum.org',
-  },
-  {
-    slug: 'louvre',
-    name: 'Louvre Museum',
-    waypointsFile: 'waypoints_louvre.json',
-    systemPromptFile: 'system_prompt_louvre.md',
-    adminEmail: 'admin@louvre.fr',
-  },
-];
-
-async function extractSystemPrompt(fileName: string): Promise<string> {
-  const raw = await readFile(path.join(dataDir, fileName), 'utf-8');
-  const [persona] = raw.split(/\nCONTEXT:/);
-  return (persona ?? raw).trim();
-}
 
 export interface MockAdminUser {
   id: string;
@@ -91,11 +38,10 @@ export async function buildFixtures(): Promise<FixtureStore> {
     museumId: null,
   });
 
-  for (const spec of MUSEUM_SPECS) {
+  for (const spec of MUSEUM_SEED_SPECS) {
     const museumId = deterministicUuid(`museum:${spec.slug}`);
     const systemPrompt = await extractSystemPrompt(spec.systemPromptFile);
-    const raw = await readFile(path.join(dataDir, spec.waypointsFile), 'utf-8');
-    const waypoints: RawWaypoint[] = JSON.parse(raw);
+    const waypoints = await loadWaypoints(spec.waypointsFile);
 
     museums.push({
       id: museumId,

@@ -19,6 +19,6 @@
     "declaration": false,
     "sourceMap": true
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts", "mock/**/*.ts", "tests/**/*.ts"],
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "mock/**/*.ts", "tests/**/*.ts", "prisma/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

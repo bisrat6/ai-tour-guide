@@ -176,7 +176,7 @@ Priority: highest. Everyone else needs the real schema shape.
 
 ### D1-2 — Seed and schema validation
 
-**Status:** Not started
+**Status:** Done
 
 Goal: prove the schema actually holds the content before anything is built on it.
 
