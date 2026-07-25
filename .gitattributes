@@ -1,0 +1,5 @@
+# Git stores text files with LF, but a Windows checkout writes them back as CRLF
+# unless told otherwise, and Prettier's endOfLine defaults to "lf". Without this,
+# `npm run format` fails on every file locally while CI (Linux, LF) passes — the
+# worst kind of check, one that only breaks on some machines.
+* text=auto eol=lf

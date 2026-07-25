@@ -28,10 +28,21 @@ available for clients that prefer the in-memory contract.
 ```bash
 cd backend
 npm install
+cp .env.example .env      # fill in DATABASE_URL at least — the next step needs it
+npm run prisma:generate
 ```
+
+`prisma generate` is not optional and not automatic. The client is written into
+`node_modules/.prisma`, which is untracked and wiped by `npm ci`, so a fresh
+clone has no Prisma types until you run it — `typecheck`, `dev`, and `test` all
+fail beforehand with `Module '@prisma/client' has no exported member
+'PrismaClient'`. It is not a `postinstall` hook because `prisma.config.ts`
+resolves `DATABASE_URL` eagerly, so hooking it would make `npm install` itself
+fail on a clone that has no `.env` yet.
 
 | Command                           | What it does                                                                                                                                     |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `npm run prisma:generate`         | `prisma generate` — regenerate the Prisma client. Required after a fresh install and after any `schema.prisma` change                            |
 | `npm run typecheck`               | `tsc --noEmit`                                                                                                                                   |
 | `npm run lint` / `lint:fix`       | ESLint (flat config, `@typescript-eslint`)                                                                                                       |
 | `npm run format` / `format:write` | Prettier check / write                                                                                                                           |
@@ -47,7 +58,9 @@ npm install
    (≥32 chars), and the `SEED_*` passwords.
 2. Create the Postgres database named in `DATABASE_URL` (and a separate
    throwaway DB for `TEST_DATABASE_URL` — integration tests truncate it).
-3. `npx prisma migrate deploy` then `npm run seed` then `npm run dev`.
+3. `npm run prisma:generate`, then `npx prisma migrate deploy`, then
+   `npm run seed`, then `npm run dev`. (`migrate deploy` does not generate the
+   client for you — only `migrate dev` does.)
 
 Seeded accounts, created by `npm run seed` (`backend/prisma/seed.ts`), idempotent
 to re-run (matches on email / `Museum.slug`, so re-running updates rather than

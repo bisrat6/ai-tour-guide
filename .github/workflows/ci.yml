@@ -51,6 +51,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Must come before every other step: the client is generated into
+      # node_modules/.prisma, which npm ci wipes and git doesn't track, so
+      # without this @prisma/client exports no types and typecheck fails on
+      # every file that imports PrismaClient, Prisma, AdminRole, or a model.
+      - name: Generate Prisma client
+        run: npx prisma generate
+
       - name: Typecheck
         run: npm run typecheck
 
