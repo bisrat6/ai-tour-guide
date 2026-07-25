@@ -74,4 +74,54 @@ export class ApiError extends Error {
   static upstreamUnavailable(message = 'Upstream is temporarily unavailable.'): ApiError {
     return new ApiError(503, ErrorCode.UPSTREAM_UNAVAILABLE, message);
   }
+
+  // --- Billing and ticketing (dev3 §12) ---------------------------------
+
+  /**
+   * The limit is reported in `details` so a client can render "3 of 3 rooms
+   * used" without re-deriving the numbers from the message string.
+   */
+  static tierLimitExceeded(info: {
+    limit: string;
+    tier: string;
+    allowed: number | null;
+    current: number;
+  }): ApiError {
+    const allowed = info.allowed ?? 'unlimited';
+    return new ApiError(
+      403,
+      ErrorCode.TIER_LIMIT_EXCEEDED,
+      `The ${info.tier} plan allows ${allowed} ${info.limit}. Upgrade to add more.`,
+      [
+        { path: 'limit', message: info.limit },
+        { path: 'tier', message: info.tier },
+        { path: 'allowed', message: String(allowed) },
+        { path: 'current', message: String(info.current) },
+      ],
+    );
+  }
+
+  static subscriptionInactive(
+    message = 'Your subscription is not active. Please renew to add new content.',
+  ): ApiError {
+    return new ApiError(403, ErrorCode.SUBSCRIPTION_INACTIVE, message);
+  }
+
+  static paymentAlreadyPending(
+    message = 'A checkout for this tier is already in progress.',
+  ): ApiError {
+    return new ApiError(409, ErrorCode.PAYMENT_ALREADY_PENDING, message);
+  }
+
+  static paymentNotFound(message = 'Payment not found.'): ApiError {
+    return new ApiError(404, ErrorCode.PAYMENT_NOT_FOUND, message);
+  }
+
+  static ticketUrlInvalid(reason: string): ApiError {
+    return new ApiError(
+      422,
+      ErrorCode.TICKET_URL_INVALID,
+      `Ticket validation URL is invalid: ${reason}`,
+    );
+  }
 }

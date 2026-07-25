@@ -42,6 +42,44 @@ async function seedSystemAdmin() {
   console.log(`Seeded SYSTEM_ADMIN: ${admin.email} (${admin.id})`);
 }
 
+/**
+ * Prices for each tier (dev3 §4.1). Upserted rather than created so a price
+ * edited in the database is not silently reverted by a re-seed — only the
+ * catalogue copy is refreshed.
+ */
+async function seedTierPricing() {
+  const tiers = [
+    {
+      tier: 'BASIC' as const,
+      amountEtb: 1500,
+      displayName: 'Basic',
+      description: '1 floor, standard features, basic analytics',
+    },
+    {
+      tier: 'PRO' as const,
+      amountEtb: 4500,
+      displayName: 'Pro',
+      description: 'Up to 3 floors, custom branding, advanced analytics',
+    },
+    {
+      tier: 'ENTERPRISE' as const,
+      amountEtb: 12000,
+      displayName: 'Enterprise',
+      description: 'Unlimited floors, white-label delivery, deep analytics',
+    },
+  ];
+
+  for (const { tier, amountEtb, displayName, description } of tiers) {
+    await prisma.tierPricing.upsert({
+      where: { tier },
+      create: { tier, amountEtb, periodDays: 30, displayName, description, active: true },
+      update: { displayName, description },
+    });
+  }
+
+  console.log(`Seeded tier pricing: ${tiers.map((t) => t.tier).join(', ')}.`);
+}
+
 async function seedMuseums() {
   if (!env.SEED_MUSEUM_ADMIN_PASSWORD) {
     console.warn('SEED_MUSEUM_ADMIN_PASSWORD is not set — skipping museum content seeding.');
@@ -136,6 +174,7 @@ async function seedMuseums() {
 
 async function main() {
   await seedSystemAdmin();
+  await seedTierPricing();
   await seedMuseums();
 }
 

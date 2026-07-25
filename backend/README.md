@@ -23,6 +23,17 @@ guarantees the §7.1 envelope even for failures that never reach a route
 (malformed/oversized bodies, unmatched routes). The D1-0 mock server remains
 available for clients that prefer the in-memory contract.
 
+Developer 3's billing and ticketing work has since been integrated on top:
+subscription tiers with Chapa checkout (`/admin/billing/*`), a payment
+reconciler (`npm run reconcile`), and visitor ticket validation
+(`POST /tickets/validate`) behind an SSRF guard. That branch was ported rather
+than merged, and several billing defects were carried across knowingly —
+including one critical one, that `PAYMENTS_PROVIDER` defaults to `fake` and is
+not refused in production. Read
+[docs/d3-integration-audit.md](../docs/d3-integration-audit.md) before deploying
+or touching billing. Tier limits are implemented and tested but deliberately
+enforced on no route yet; that document explains why.
+
 ## Quick start
 
 ```bash
@@ -48,7 +59,8 @@ fail on a clone that has no `.env` yet.
 | `npm run format` / `format:write` | Prettier check / write                                                                                                                           |
 | `npm run generate:openapi`        | Regenerates `openapi/openapi.yaml` from the Zod schemas under `src/modules/*/schemas.ts` — this is the source of truth, never hand-edit the YAML |
 | `npm run dev`                     | Starts the real Express app (`PORT`, default 3000; local `.env` may use 3001)                                                                    |
-| `npm run seed`                    | Seeds SYSTEM_ADMIN + both museums' rooms/items/personas into Postgres                                                                            |
+| `npm run seed`                    | Seeds SYSTEM_ADMIN, tier pricing, and both museums' rooms/items/personas into Postgres                                                           |
+| `npm run reconcile`               | Payment reconciler; accepts `-- --dry-run` and `-- --sweep`. Intended to run on a schedule                                                       |
 | `npm run mock`                    | Starts the mock admin API on `http://localhost:4000` (`MOCK_PORT` to override), fixtures loaded from `../data/*.json`                            |
 | `npm test`                        | Runs Vitest (unit + integration). Integration tests require `TEST_DATABASE_URL` pointing at a throwaway DB                                       |
 
@@ -111,17 +123,26 @@ backend/
       jwt.ts                sign/verify admin JWTs
       prisma.ts              PrismaClient instance (PrismaPg adapter)
       auditLog.ts            writeAuditLog() — AdminAuditLog entries inside the same transaction as the write
+      resolveMuseum.ts       resolves a resource's owning museum from the DB, never from the request body
+      ssrfGuard.ts           blocks private/metadata targets before any admin-supplied URL is fetched
       asyncHandler.ts, params.ts, version.ts
     middleware/
       requestId.ts, errorHandler.ts     — request tracing + the single place that emits the §7.1 envelope
       requireAuth.ts, requireRole.ts, requireMuseumScope.ts   — auth/authz chain
       rateLimit.ts
+      requireWithinTierLimit.ts   — tier caps on creates; implemented and tested, mounted on no route yet
     modules/
       auth/     schemas.ts, router.ts, service.ts, loginAttempts.ts
       museums/  schemas.ts, router.ts, service.ts
       rooms/    schemas.ts, router.ts, service.ts
       items/    schemas.ts, router.ts, service.ts
+      billing/  schemas.ts, router.ts, service.ts, tiers.ts, reconcile.ts
+      tickets/  schemas.ts, router.ts, service.ts
       health/   router.ts
+    providers/
+      resilience.ts          timeout + one retry + circuit breaker for every outbound provider call
+      payments/              Chapa adapter and an in-memory fake, chosen by PAYMENTS_PROVIDER
+      ticketing/             HTTP vendor adapter and a fake, chosen by TICKETS_PROVIDER
     shared/
       errorEnvelope.ts, pagination.ts    cross-module contract pieces
       museumSeedData.ts                   shared between prisma/seed.ts and mock/fixtures.ts
@@ -131,13 +152,15 @@ backend/
   prisma.config.ts        Prisma 7 CLI config (reads DATABASE_URL)
   scripts/
     generate-openapi.ts    regenerates openapi/openapi.yaml from the Zod schemas — never hand-edit the YAML
+    reconcile-payments.ts  scheduled payment reconciler (npm run reconcile)
   mock/                    D1-0 mock server (in-memory contract simulator, not the real app)
   openapi/
     openapi.yaml           generated — do not hand-edit
   postman/                 end-to-end collection run against a live server — see postman/README.md
   tests/
     unit/                  deterministicId, schemas
-    integration/            auth, museums, rooms, items, isolation (§17.2 matrix), errorEnvelope
+    integration/            auth, museums, rooms, items, isolation (§17.2 matrix), errorEnvelope,
+                            billing, tickets, tierLimits
     helpers/                db.ts (seed/reset), scenario.ts (isolation fixtures)
     setup/testEnv.ts        swaps TEST_DATABASE_URL into DATABASE_URL before any test runs
   docker-compose.yml       local Postgres
@@ -147,7 +170,9 @@ See [developer1-detailed-plan.md](../developer1-detailed-plan.md) for the
 full phase-by-phase history and
 [docs/dev2-dev3-handoff.md](../docs/dev2-dev3-handoff.md) for the
 `ChatAnswer`/`AudioAsset` table contracts and the cache-purge rule Developers
-2 and 3 build on.
+2 and 3 build on. [docs/d3-integration-audit.md](../docs/d3-integration-audit.md)
+covers how Developer 3's billing and ticketing work was integrated, and what
+remains open in it.
 
 ## Testing
 

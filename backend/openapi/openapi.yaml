@@ -87,6 +87,11 @@ components:
         - INTERNAL_ERROR
         - UPSTREAM_FAILURE
         - UPSTREAM_UNAVAILABLE
+        - TIER_LIMIT_EXCEEDED
+        - SUBSCRIPTION_INACTIVE
+        - PAYMENT_ALREADY_PENDING
+        - PAYMENT_NOT_FOUND
+        - TICKET_URL_INVALID
       description: Machine-readable error code. See §7.2 of the backend implementation plan.
     LoginResponse:
       type: object

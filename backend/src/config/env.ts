@@ -65,10 +65,84 @@ const envSchema = z.object({
   CHAT_RATE_LIMIT_PER_5MIN: z.coerce.number().int().positive().default(20),
   CHAT_MAX_QUESTION_CHARS: z.coerce.number().int().positive().default(500),
   ANSWER_CACHE_TTL_HOURS: z.coerce.number().int().positive().default(24),
+
+  // Payments (dev3 §4). CHAPA_SECRET_KEY and CHAPA_RETURN_URL are optional
+  // here, not required as on dev3's branch: the same optional-until-needed rule
+  // as the LLM/TTS vars above, so tests and the fake provider don't need a
+  // Chapa account. The chapa adapter fails loudly if they're missing when used.
+  PAYMENTS_PROVIDER: z.enum(['chapa', 'fake']).default('fake'),
+  CHAPA_SECRET_KEY: z.string().optional(),
+  CHAPA_BASE_URL: z.url().default('https://api.chapa.co/v1'),
+  CHAPA_RETURN_URL: z.url().optional(),
+  CHAPA_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+
+  // Ticketing (dev3 §6).
+  TICKETS_PROVIDER: z.enum(['http', 'fake']).default('fake'),
+  TICKET_VENDOR_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+  ENABLE_STUB_TICKET_VENDOR: z
+    .string()
+    .default('false')
+    .transform((value) => value === 'true'),
+  STUB_TICKET_CODES: z.string().default(''),
+  // Lets the SSRF guard reach a vendor on localhost during development. The
+  // production guard below refuses to boot with this on.
+  OUTBOUND_HTTP_ALLOW_PRIVATE_IPS: z
+    .string()
+    .default('false')
+    .transform((value) => value === 'true'),
+});
+
+/**
+ * Configuration that is merely wrong in development but dangerous in
+ * production, so it is rejected at boot rather than at first use.
+ */
+const envSchemaWithProductionGuards = envSchema.superRefine((data, ctx) => {
+  // Selecting the real payment provider without its credentials is a
+  // misconfiguration in any environment, so this one is not production-only.
+  if (data.PAYMENTS_PROVIDER === 'chapa') {
+    if (!data.CHAPA_SECRET_KEY) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['CHAPA_SECRET_KEY'],
+        message: 'is required when PAYMENTS_PROVIDER=chapa',
+      });
+    }
+    if (!data.CHAPA_RETURN_URL) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['CHAPA_RETURN_URL'],
+        message: 'is required when PAYMENTS_PROVIDER=chapa',
+      });
+    }
+  }
+
+  if (data.NODE_ENV !== 'production') return;
+
+  if (data.ENABLE_STUB_TICKET_VENDOR) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['ENABLE_STUB_TICKET_VENDOR'],
+      message: 'must be false in production',
+    });
+  }
+  if (data.OUTBOUND_HTTP_ALLOW_PRIVATE_IPS) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['OUTBOUND_HTTP_ALLOW_PRIVATE_IPS'],
+      message: 'must be false in production',
+    });
+  }
+  if (data.CHAPA_SECRET_KEY?.startsWith('CHASECK_TEST-')) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['CHAPA_SECRET_KEY'],
+      message: 'looks like a sandbox key — refusing to use it in production',
+    });
+  }
 });
 
 function loadEnv() {
-  const parsed = envSchema.safeParse(process.env);
+  const parsed = envSchemaWithProductionGuards.safeParse(process.env);
   if (!parsed.success) {
     // Deliberately not using the app logger here: this runs before it (or
     // anything else) is safe to construct, and boot failures need to be

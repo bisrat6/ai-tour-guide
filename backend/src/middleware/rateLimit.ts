@@ -1,3 +1,4 @@
+import type { Request } from 'express';
 import rateLimit from 'express-rate-limit';
 import { env } from '../config/env.js';
 import { ApiError } from '../lib/errors.js';
@@ -11,13 +12,24 @@ import { ApiError } from '../lib/errors.js';
  * Skipped in NODE_ENV=test so integration tests can exercise lockout and
  * credential failures without also tripping the per-IP cap.
  */
-export function createRateLimiter(options: { windowMs: number; max: number; message: string }) {
+export function createRateLimiter(options: {
+  windowMs: number;
+  max: number;
+  message: string;
+  /**
+   * Buckets by something other than IP — e.g. the museum a request names, so
+   * one busy tenant cannot exhaust the shared allowance. Setting this disables
+   * express-rate-limit's IP-shape validation, which only applies to IP keys.
+   */
+  keyGenerator?: (req: Request) => string;
+}) {
   return rateLimit({
     windowMs: options.windowMs,
     limit: options.max,
     standardHeaders: true,
     legacyHeaders: false,
     skip: () => env.NODE_ENV === 'test',
+    ...(options.keyGenerator ? { keyGenerator: options.keyGenerator, validate: false } : {}),
     handler: (_req, _res, next) => {
       next(ApiError.rateLimited(options.message));
     },

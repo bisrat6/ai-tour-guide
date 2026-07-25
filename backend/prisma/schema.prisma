@@ -20,6 +20,26 @@ enum AdminRole {
   MUSEUM_ADMIN
 }
 
+// Subscription and payment enums per dev3-integrations-monetization-plan.md §4.
+enum SubscriptionTier {
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+}
+
 model Museum {
   id                  String       @id @default(uuid())
   name                String
@@ -28,14 +48,25 @@ model Museum {
   ticketValidationUrl String? // null = no ticketing gate for this museum
   systemPrompt        String?      @db.Text // per-museum guide persona (S2)
   defaultVoiceId      String? // per-museum TTS voice (S3)
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+
+  // Subscription state (dev3 §4). Tier limits live in code
+  // (src/modules/billing/tiers.ts); prices live in TierPricing.
+  tier                 SubscriptionTier   @default(BASIC)
+  subscriptionStatus   SubscriptionStatus @default(ACTIVE)
+  subscriptionRenewsAt DateTime?
+  billingEmail         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   adminUsers AdminUser[]
   rooms      Room[]
   auditLogs  AdminAuditLog[]
+  payments   Payment[]
 
   @@index([status])
+  // Serves the reconciler's lapsed-subscription sweep.
+  @@index([subscriptionStatus, subscriptionRenewsAt])
 }
 
 model AdminUser {
@@ -130,9 +161,11 @@ model ChatAnswer {
 }
 
 model AdminAuditLog {
-  id          String    @id @default(uuid())
-  adminUserId String
-  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  id          String     @id @default(uuid())
+  // Nullable because the payment reconciler acts with no human behind it
+  // (dev3 §4). SetNull rather than Cascade so the trail outlives the account.
+  adminUserId String?
+  adminUser   AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
   museumId    String?
   museum      Museum?   @relation(fields: [museumId], references: [id], onDelete: SetNull)
   action      String // CREATE | UPDATE | DELETE
@@ -144,4 +177,42 @@ model AdminAuditLog {
 
   @@index([museumId, createdAt])
   @@index([adminUserId, createdAt])
+}
+
+// Prices live here rather than in code so a price change is a data edit, not a
+// deploy. Tier *limits* live in code so changing them needs review and tests.
+model TierPricing {
+  tier        SubscriptionTier @id
+  amountEtb   Decimal          @db.Decimal(10, 2)
+  periodDays  Int              @default(30)
+  displayName String
+  description String?
+  active      Boolean          @default(true)
+  updatedAt   DateTime         @updatedAt
+}
+
+// One row per checkout attempt. Written before the provider is called, so a
+// failed upstream call still leaves an auditable record. txRef is the unique
+// idempotency key shared with the payment provider.
+model Payment {
+  id                 String           @id @default(uuid())
+  museumId           String
+  museum             Museum           @relation(fields: [museumId], references: [id], onDelete: Restrict)
+  tier               SubscriptionTier
+  amountEtb          Decimal          @db.Decimal(10, 2)
+  currency           String           @default("ETB")
+  txRef              String           @unique
+  chapaReference     String?
+  checkoutUrl        String?          @db.Text
+  status             PaymentStatus    @default(PENDING)
+  failureReason      String?
+  periodStart        DateTime?
+  periodEnd          DateTime?
+  initiatedByAdminId String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  paidAt             DateTime?
+
+  @@index([museumId, createdAt])
+  @@index([status, createdAt])
 }
