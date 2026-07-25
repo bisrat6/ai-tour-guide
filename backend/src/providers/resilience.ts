@@ -50,6 +50,29 @@ export function resetBreakersForTests(): void {
   breakers.clear();
 }
 
+export interface BreakerSnapshot {
+  /** `${vendor}:${operation}` — the same key providerCall buckets by. */
+  key: string;
+  consecutiveFailures: number;
+  open: boolean;
+  openedAt: string | null;
+}
+
+/**
+ * Read-only view for the operator health screen. Only vendors that have
+ * actually been called appear here: a breaker is created lazily on first use,
+ * so an empty list means no outbound call has been made since boot, not that
+ * everything is healthy.
+ */
+export function getBreakerSnapshots(): BreakerSnapshot[] {
+  return [...breakers.entries()].map(([key, state]) => ({
+    key,
+    consecutiveFailures: state.failures,
+    open: isOpen(state),
+    openedAt: state.openedAt === null ? null : new Date(state.openedAt).toISOString(),
+  }));
+}
+
 export class UpstreamUnavailableError extends Error {
   constructor(vendor: string) {
     super(`${vendor} circuit breaker is open`);

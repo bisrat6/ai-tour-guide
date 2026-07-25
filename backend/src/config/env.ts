@@ -109,6 +109,14 @@ export const envSchemaWithProductionGuards = envSchema.superRefine((data, ctx) =
         message: 'is required when PAYMENTS_PROVIDER=chapa',
       });
     }
+    if (data.CHAPA_SECRET_KEY?.startsWith('CHAPUBK')) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['CHAPA_SECRET_KEY'],
+        message:
+          'is the Chapa public key — server-side initialize and verify need the secret key, which starts with CHASECK_',
+      });
+    }
     if (!data.CHAPA_RETURN_URL) {
       ctx.addIssue({
         code: 'custom',

@@ -296,19 +296,34 @@ describe('D1-4 museums', () => {
   });
 
   describe('POST /admin/museums/:id/admins', () => {
-    it('adds a second admin who can then log in, and is system-only', async () => {
+    it('adds a second admin who can then log in, and is scoped to one museum', async () => {
       const { token: systemToken } = await seedSystemAdmin();
       const { museum, token: museumToken } = await seedMuseumWithAdmin({
         name: 'Adwa',
         slug: 'adwa',
         email: 'admin@adwa.test',
       });
+      const other = await seedMuseumWithAdmin({
+        name: 'Other',
+        slug: 'other',
+        email: 'admin@other.test',
+      });
 
-      const forbidden = await request(app)
+      // A museum staffs itself, but only itself: the role is fixed to
+      // MUSEUM_ADMIN and the museum comes from the path, so this can never mint
+      // an operator or reach another tenant.
+      const own = await request(app)
         .post(`/admin/museums/${museum.id}/admins`)
         .set(authHeader(museumToken))
-        .send({ email: 'second@adwa.test', password: PASSWORD });
-      expect(forbidden.status).toBe(403);
+        .send({ email: 'colleague@adwa.test', password: PASSWORD });
+      expect(own.status).toBe(201);
+      expect(own.body).toMatchObject({ role: 'MUSEUM_ADMIN', museumId: museum.id });
+
+      const crossTenant = await request(app)
+        .post(`/admin/museums/${other.museum.id}/admins`)
+        .set(authHeader(museumToken))
+        .send({ email: 'intruder@other.test', password: PASSWORD });
+      expect(crossTenant.status).toBe(403);
 
       const added = await request(app)
         .post(`/admin/museums/${museum.id}/admins`)

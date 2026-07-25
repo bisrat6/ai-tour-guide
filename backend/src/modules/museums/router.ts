@@ -8,6 +8,7 @@ import { requireRole } from '../../middleware/requireRole.js';
 import {
   addMuseumAdminRequestSchema,
   createMuseumRequestSchema,
+  getMuseumQuerySchema,
   listMuseumsQuerySchema,
   updateMuseumRequestSchema,
 } from './schemas.js';
@@ -39,7 +40,8 @@ museumsRouter.get(
   '/museums/:id',
   requireMuseumScope(resolveMuseumIdFromParam),
   asyncHandler(async (req, res) => {
-    res.json(await getMuseum(requireParam(req, 'id')));
+    const query = getMuseumQuerySchema.parse(req.query);
+    res.json(await getMuseum(requireParam(req, 'id'), query.withStats));
   }),
 );
 
@@ -63,9 +65,13 @@ museumsRouter.patch(
   }),
 );
 
+// Scoped, not operator-only: a museum has to be able to staff itself without
+// filing a ticket. The role is hard-coded to MUSEUM_ADMIN and the museum comes
+// from the path, so this can only ever mint a seat inside the caller's own
+// tenant — minting an operator stays behind POST /admin/admins.
 museumsRouter.post(
   '/museums/:id/admins',
-  requireRole('SYSTEM_ADMIN'),
+  requireMuseumScope(resolveMuseumIdFromParam),
   asyncHandler(async (req, res) => {
     const body = addMuseumAdminRequestSchema.parse(req.body);
     if (!req.admin) throw ApiError.unauthenticated();

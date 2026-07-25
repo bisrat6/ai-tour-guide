@@ -9,11 +9,13 @@ import {
   billingStatusQuerySchema,
   checkoutRequestSchema,
   manualTierRequestSchema,
+  spendQuerySchema,
 } from './schemas.js';
 import {
   applyPaidPayment,
   createCheckout,
   getBillingStatus,
+  getSpend,
   manualTierOverride,
 } from './service.js';
 import { TIER_LIMITS } from './tiers.js';
@@ -120,6 +122,16 @@ billingRouter.get(
       museumTier: museum?.tier ?? null,
       subscriptionRenewsAt: museum?.subscriptionRenewsAt ?? null,
     });
+  }),
+);
+
+/** Fleet-wide collected revenue. Spans every tenant, so operators only. */
+billingRouter.get(
+  '/billing/spend',
+  requireRole('SYSTEM_ADMIN'),
+  asyncHandler(async (req, res) => {
+    const query = spendQuerySchema.parse(req.query);
+    res.json(await getSpend(query));
   }),
 );
 

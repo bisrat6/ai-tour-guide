@@ -101,7 +101,8 @@ describe('billing', () => {
         .send({ tier: 'PRO' });
 
       expect(res.status).toBe(201);
-      expect(res.body.checkoutUrl).toMatch(/^https:\/\/fake-chapa\.test\/checkout\//);
+      // The fake provider hands the browser back to the return page directly.
+      expect(res.body.checkoutUrl).toMatch(/\/billing\/return\?tx_ref=/);
       expect(res.body.txRef).toMatch(/^adwa-adwa-PRO-/);
       expect(res.body.amountEtb).toBe('4500.00');
 

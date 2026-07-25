@@ -7,6 +7,7 @@ import { prisma } from '../../lib/prisma.js';
 import { getPaymentProvider } from '../../providers/payments/index.js';
 import { UpstreamFailureError, UpstreamUnavailableError } from '../../providers/resilience.js';
 import type { AdminContext } from '../../types/express.js';
+import type { SpendQuery, SpendResponse } from './schemas.js';
 import { TIER_LIMITS } from './tiers.js';
 
 const DAY_MS = 86_400_000;
@@ -207,7 +208,16 @@ export async function createCheckout(
   const museumAdmin = await prisma.adminUser.findFirst({
     where: { museumId, role: 'MUSEUM_ADMIN' },
   });
-  const billingEmail = museum.billingEmail ?? museumAdmin?.email ?? 'billing@adwa.local';
+  // Chapa validates the payer email and refuses the whole checkout over a
+  // malformed one, so this is caught here where the message can name the field
+  // to fix rather than arriving as an opaque gateway rejection.
+  const billingEmail = museum.billingEmail ?? museumAdmin?.email ?? '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(billingEmail)) {
+    throw ApiError.validation(
+      [{ path: 'billingEmail', message: 'Set a valid billing email before starting a checkout.' }],
+      'This museum has no valid billing email.',
+    );
+  }
 
   // Written before the provider call so a failed checkout still leaves a record.
   const payment = await prisma.payment.create({
@@ -269,7 +279,10 @@ export async function createCheckout(
       throw ApiError.upstreamUnavailable('Chapa is temporarily unavailable.');
     }
     if (err instanceof UpstreamFailureError) {
-      throw ApiError.upstreamFailure('Chapa payment initialization failed.');
+      // The adapter's message names what the gateway actually objected to. The
+      // generic one sent the last reader looking for a network fault when the
+      // answer — a rejected API key — was already in the response.
+      throw ApiError.upstreamFailure(err.message);
     }
     throw err;
   }
@@ -334,6 +347,63 @@ export async function getBillingStatus(
     payments: page.map((row) => ({ ...row, amountEtb: row.amountEtb.toFixed(2) })),
     nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
   };
+}
+
+const SPEND_WINDOW_DAYS: Record<SpendQuery['window'], number> = { '7d': 7, '30d': 30, '90d': 90 };
+
+/**
+ * Collected revenue per museum over a rolling window. System admin only — it
+ * spans every tenant by definition, so there is no museum-scoped version.
+ */
+export async function getSpend(query: SpendQuery): Promise<SpendResponse> {
+  const since = new Date(Date.now() - SPEND_WINDOW_DAYS[query.window] * DAY_MS);
+
+  const museums = await prisma.museum.findMany({
+    where: query.status ? { status: query.status } : {},
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      cityCountry: true,
+      status: true,
+      tier: true,
+      subscriptionStatus: true,
+    },
+    orderBy: { name: 'asc' },
+  });
+
+  // One grouped aggregate rather than a query per museum: the fleet is small
+  // but this screen is polled, and N+1 here would show up immediately.
+  const grouped = await prisma.payment.groupBy({
+    by: ['museumId'],
+    where: { status: 'PAID', paidAt: { gte: since } },
+    _sum: { amountEtb: true },
+    _count: { _all: true },
+    _max: { paidAt: true },
+  });
+  const byMuseum = new Map(grouped.map((row) => [row.museumId, row]));
+
+  const rows = museums.map((museum) => {
+    const aggregate = byMuseum.get(museum.id);
+    return {
+      museumId: museum.id,
+      museumName: museum.name,
+      slug: museum.slug,
+      cityCountry: museum.cityCountry,
+      status: museum.status,
+      tier: museum.tier,
+      subscriptionStatus: museum.subscriptionStatus,
+      paidAmountEtb: (aggregate?._sum.amountEtb ?? new Prisma.Decimal(0)).toFixed(2),
+      paymentCount: aggregate?._count._all ?? 0,
+      lastPaidAt: aggregate?._max.paidAt?.toISOString() ?? null,
+    };
+  });
+
+  const totalEtb = rows
+    .reduce((sum, row) => sum.plus(new Prisma.Decimal(row.paidAmountEtb)), new Prisma.Decimal(0))
+    .toFixed(2);
+
+  return { window: query.window, since: since.toISOString(), currency: 'ETB', totalEtb, rows };
 }
 
 /**

@@ -20,6 +20,26 @@ enum AdminRole {
   MUSEUM_ADMIN
 }
 
+// An account created by an operator but not yet signed into is INVITED;
+// SUSPENDED is refused at login without deleting the audit trail behind it.
+enum AdminStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+// How a visitor proves entry before the guide unlocks (§ gate settings).
+enum GateMode {
+  TICKET_CODE
+  STAFF_ASSISTED
+}
+
+enum GuideStyleTone {
+  FORMAL
+  CONVERSATIONAL
+  SCHOLARLY
+}
+
 // Subscription and payment enums per dev3-integrations-monetization-plan.md §4.
 enum SubscriptionTier {
   BASIC
@@ -45,9 +65,24 @@ model Museum {
   name                String
   slug                String       @unique
   status              MuseumStatus @default(ACTIVE)
+  cityCountry         String? // free-text locality, shown as the fleet "region"
   ticketValidationUrl String? // null = no ticketing gate for this museum
   systemPrompt        String?      @db.Text // per-museum guide persona (S2)
   defaultVoiceId      String? // per-museum TTS voice (S3)
+
+  // Entry gate configuration. ticketValidationUrl above is the vendor endpoint;
+  // these shape how the visitor app presents and tolerates the check.
+  gateMode            GateMode @default(TICKET_CODE)
+  allowedTicketPrefix String?
+  graceWindowMinutes  Int      @default(30)
+
+  // Guide persona and voice presentation. systemPrompt holds the grounding
+  // policy; personaName and styleTone are the shorter knobs above it.
+  personaName        String?
+  guideStyleTone     GuideStyleTone @default(CONVERSATIONAL)
+  // Multiplier on the TTS default rate. 1.00 is the provider's own pace.
+  speakingRate       Decimal        @default(1.00) @db.Decimal(3, 2)
+  pronunciationHints String?        @db.Text
 
   // Subscription state (dev3 §4). Tier limits live in code
   // (src/modules/billing/tiers.ts); prices live in TierPricing.
@@ -70,19 +105,22 @@ model Museum {
 }
 
 model AdminUser {
-  id           String    @id @default(uuid())
-  email        String    @unique
+  id           String      @id @default(uuid())
+  email        String      @unique
+  displayName  String? // shown on the team and admins screens; email is the fallback
   passwordHash String
   role         AdminRole
+  status       AdminStatus @default(ACTIVE)
   museumId     String? // null for SYSTEM_ADMIN, required for MUSEUM_ADMIN
-  museum       Museum?   @relation(fields: [museumId], references: [id], onDelete: Restrict)
+  museum       Museum?     @relation(fields: [museumId], references: [id], onDelete: Restrict)
   lastLoginAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   auditLogs AdminAuditLog[]
 
   @@index([museumId])
+  @@index([status])
 }
 
 model Room {

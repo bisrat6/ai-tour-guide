@@ -42,6 +42,31 @@ import {
   listItemsResponseSchema,
   updateItemRequestSchema,
 } from '../src/modules/items/schemas.js';
+import {
+  createAdminRequestSchema,
+  listAdminsQuerySchema,
+  listAdminsResponseSchema,
+  updateAdminRequestSchema,
+} from '../src/modules/admins/schemas.js';
+import {
+  listAuditLogsQuerySchema,
+  listAuditLogsResponseSchema,
+} from '../src/modules/audit/schemas.js';
+import {
+  overviewQuerySchema,
+  systemHealthSchema,
+  tenantOverviewSchema,
+} from '../src/modules/overview/schemas.js';
+import {
+  checkoutRequestSchema,
+  manualTierRequestSchema,
+  spendQuerySchema,
+  spendResponseSchema,
+} from '../src/modules/billing/schemas.js';
+import {
+  validateTicketRequestSchema,
+  validateTicketResponseSchema,
+} from '../src/modules/tickets/schemas.js';
 
 const registry = new OpenAPIRegistry();
 
@@ -380,6 +405,196 @@ registry.registerPath({
   },
 });
 
+// --- Admin users ----------------------------------------------------------
+
+registry.registerPath({
+  method: 'get',
+  path: '/admin/admins',
+  tags: ['Admins'],
+  summary: 'List admin accounts',
+  description:
+    'A MUSEUM_ADMIN sees only its own museum\u2019s seats and never an operator account; scope comes from the token, not from ?museumId.',
+  security: [{ [bearerAuth.name]: [] }],
+  request: { query: listAdminsQuerySchema },
+  responses: {
+    200: {
+      description: 'Paginated list of admin accounts.',
+      content: { 'application/json': { schema: listAdminsResponseSchema } },
+    },
+    ...errorResponses(400, 401),
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/admin/admins',
+  tags: ['Admins'],
+  summary: 'Create an admin account (SYSTEM_ADMIN only)',
+  security: [{ [bearerAuth.name]: [] }],
+  request: { body: { content: { 'application/json': { schema: createAdminRequestSchema } } } },
+  responses: {
+    201: {
+      description: 'Account created, in INVITED status until its first login.',
+      content: { 'application/json': { schema: adminUserSchema } },
+    },
+    ...errorResponses(400, 401, 403, 404, 409, 413),
+  },
+});
+
+registry.registerPath({
+  method: 'patch',
+  path: '/admin/admins/{id}',
+  tags: ['Admins'],
+  summary: 'Update an admin\u2019s display name, status, or password',
+  description:
+    'Role is deliberately not editable: moving a seat across the tenant boundary in one PATCH would be a silent privilege change. Delete and re-create instead.',
+  security: [{ [bearerAuth.name]: [] }],
+  request: {
+    params: idParam,
+    body: { content: { 'application/json': { schema: updateAdminRequestSchema } } },
+  },
+  responses: {
+    200: {
+      description: 'Updated account.',
+      content: { 'application/json': { schema: adminUserSchema } },
+    },
+    ...errorResponses(400, 401, 403, 404, 409, 413),
+  },
+});
+
+registry.registerPath({
+  method: 'delete',
+  path: '/admin/admins/{id}',
+  tags: ['Admins'],
+  summary: 'Delete an admin account',
+  description:
+    'Refused for your own account, and for a museum\u2019s last active administrator \u2014 both would strand someone.',
+  security: [{ [bearerAuth.name]: [] }],
+  request: { params: idParam },
+  responses: {
+    204: { description: 'Account deleted. Its audit trail is retained.' },
+    ...errorResponses(401, 403, 404, 409),
+  },
+});
+
+// --- Audit ----------------------------------------------------------------
+
+registry.registerPath({
+  method: 'get',
+  path: '/admin/audit-logs',
+  tags: ['Audit'],
+  summary: 'Read the admin audit trail',
+  description:
+    'Newest first. A MUSEUM_ADMIN sees only its own museum\u2019s rows; control-plane events, which carry no museumId, stay invisible to it.',
+  security: [{ [bearerAuth.name]: [] }],
+  request: { query: listAuditLogsQuerySchema },
+  responses: {
+    200: {
+      description: 'Paginated audit entries.',
+      content: { 'application/json': { schema: listAuditLogsResponseSchema } },
+    },
+    ...errorResponses(400, 401),
+  },
+});
+
+// --- Overview and system health -------------------------------------------
+
+registry.registerPath({
+  method: 'get',
+  path: '/admin/overview',
+  tags: ['Overview'],
+  summary: 'Authoring readiness for one museum',
+  security: [{ [bearerAuth.name]: [] }],
+  request: { query: overviewQuerySchema },
+  responses: {
+    200: {
+      description: 'Counts plus a per-room readiness breakdown.',
+      content: { 'application/json': { schema: tenantOverviewSchema } },
+    },
+    ...errorResponses(400, 401, 403, 404),
+  },
+});
+
+registry.registerPath({
+  method: 'get',
+  path: '/admin/system/health',
+  tags: ['Overview'],
+  summary: 'Outbound dependency status (SYSTEM_ADMIN only)',
+  description:
+    'Reports configuration and circuit-breaker state. It does not probe the vendors: pinging a paid API on every dashboard load is a bill, not a feature, so an adapter nothing has called yet reports "unknown".',
+  security: [{ [bearerAuth.name]: [] }],
+  responses: {
+    200: {
+      description: 'Adapter states as this process currently sees them.',
+      content: { 'application/json': { schema: systemHealthSchema } },
+    },
+    ...errorResponses(401, 403, 503),
+  },
+});
+
+// --- Billing (dev3 §12) ---------------------------------------------------
+
+registry.registerPath({
+  method: 'post',
+  path: '/admin/billing/checkout',
+  tags: ['Billing'],
+  summary: 'Start a subscription checkout',
+  security: [{ [bearerAuth.name]: [] }],
+  request: { body: { content: { 'application/json': { schema: checkoutRequestSchema } } } },
+  responses: {
+    201: { description: 'Checkout created; redirect the caller to checkoutUrl.' },
+    ...errorResponses(400, 401, 403, 404, 409, 413, 429, 503),
+  },
+});
+
+registry.registerPath({
+  method: 'get',
+  path: '/admin/billing/spend',
+  tags: ['Billing'],
+  summary: 'Collected revenue per museum (SYSTEM_ADMIN only)',
+  security: [{ [bearerAuth.name]: [] }],
+  request: { query: spendQuerySchema },
+  responses: {
+    200: {
+      description: 'Per-museum totals over the requested window.',
+      content: { 'application/json': { schema: spendResponseSchema } },
+    },
+    ...errorResponses(400, 401, 403),
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/admin/billing/tier',
+  tags: ['Billing'],
+  summary: 'Manually override a museum\u2019s tier (SYSTEM_ADMIN only)',
+  security: [{ [bearerAuth.name]: [] }],
+  request: { body: { content: { 'application/json': { schema: manualTierRequestSchema } } } },
+  responses: {
+    200: { description: 'Tier applied and recorded in the audit trail.' },
+    ...errorResponses(400, 401, 403, 404, 413),
+  },
+});
+
+// --- Tickets (visitor-facing, unauthenticated) ----------------------------
+
+registry.registerPath({
+  method: 'post',
+  path: '/tickets/validate',
+  tags: ['Tickets'],
+  summary: 'Check a visitor ticket against the museum\u2019s vendor',
+  description:
+    'Unauthenticated and rate limited twice: per caller IP, and per museum so one tenant cannot exhaust the vendor allowance. ticketRequired=false means the museum has no gate configured, so valid is vacuously true.',
+  request: { body: { content: { 'application/json': { schema: validateTicketRequestSchema } } } },
+  responses: {
+    200: {
+      description: 'Validation result.',
+      content: { 'application/json': { schema: validateTicketResponseSchema } },
+    },
+    ...errorResponses(400, 404, 413, 422, 429, 503),
+  },
+});
+
 // --- Generate -------------------------------------------------------------
 
 const generator = new OpenApiGeneratorV31(registry.definitions);
@@ -390,7 +605,7 @@ const document = generator.generateDocument({
     version: '0.1.0',
     title: 'Adwa AI Tour Guide — Admin API',
     description:
-      'Developer 1\u2019s admin surface (auth, museums, rooms, items). Generated from Zod schemas — do not hand-edit. Every JSON request body is capped at 100kb globally; routes that accept a body therefore declare 413. See docs/backend-implementation-plan.md and developer1-detailed-plan.md.',
+      'The full admin surface: auth, museums, admin users, rooms, items, audit, overview, billing, and the visitor ticket check. Generated from Zod schemas — do not hand-edit. Every JSON request body is capped at 100kb globally; routes that accept a body therefore declare 413. See docs/backend-implementation-plan.md and developer1-detailed-plan.md.',
   },
   servers: [{ url: '/', description: 'Relative to wherever the API is deployed' }],
 });

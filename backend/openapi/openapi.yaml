@@ -2,10 +2,11 @@ openapi: 3.1.0
 info:
   version: 0.1.0
   title: Adwa AI Tour Guide — Admin API
-  description: Developer 1’s admin surface (auth, museums, rooms, items).
-    Generated from Zod schemas — do not hand-edit. Every JSON request body is
-    capped at 100kb globally; routes that accept a body therefore declare 413.
-    See docs/backend-implementation-plan.md and developer1-detailed-plan.md.
+  description: "The full admin surface: auth, museums, admin users, rooms, items,
+    audit, overview, billing, and the visitor ticket check. Generated from Zod
+    schemas — do not hand-edit. Every JSON request body is capped at 100kb
+    globally; routes that accept a body therefore declare 413. See
+    docs/backend-implementation-plan.md and developer1-detailed-plan.md."
 servers:
   - url: /
     description: Relative to wherever the API is deployed
@@ -161,19 +162,64 @@ components:
           example: adwa
         status:
           $ref: "#/components/schemas/MuseumStatus"
+        cityCountry:
+          type:
+            - string
+            - "null"
+          example: Adwa, Ethiopia
         ticketValidationUrl:
           type:
             - string
             - "null"
           format: uri
+        gateMode:
+          $ref: "#/components/schemas/GateMode"
+        allowedTicketPrefix:
+          type:
+            - string
+            - "null"
+        graceWindowMinutes:
+          type: integer
+          minimum: 0
         systemPrompt:
           type:
             - string
             - "null"
+          description: Grounding policy for chat.
+        personaName:
+          type:
+            - string
+            - "null"
+        guideStyleTone:
+          $ref: "#/components/schemas/GuideStyleTone"
         defaultVoiceId:
           type:
             - string
             - "null"
+        speakingRate:
+          type: number
+          description: Multiplier on the provider default. 1 = normal.
+        pronunciationHints:
+          type:
+            - string
+            - "null"
+        tier:
+          type: string
+          enum:
+            - BASIC
+            - PRO
+            - ENTERPRISE
+        subscriptionStatus:
+          type: string
+          enum:
+            - ACTIVE
+            - PAST_DUE
+            - CANCELED
+        subscriptionRenewsAt:
+          type:
+            - string
+            - "null"
+          format: date-time
         createdAt:
           type: string
           format: date-time
@@ -185,9 +231,20 @@ components:
         - name
         - slug
         - status
+        - cityCountry
         - ticketValidationUrl
+        - gateMode
+        - allowedTicketPrefix
+        - graceWindowMinutes
         - systemPrompt
+        - personaName
+        - guideStyleTone
         - defaultVoiceId
+        - speakingRate
+        - pronunciationHints
+        - tier
+        - subscriptionStatus
+        - subscriptionRenewsAt
         - createdAt
         - updatedAt
     MuseumStatus:
@@ -195,6 +252,17 @@ components:
       enum:
         - ACTIVE
         - SUSPENDED
+    GateMode:
+      type: string
+      enum:
+        - TICKET_CODE
+        - STAFF_ASSISTED
+    GuideStyleTone:
+      type: string
+      enum:
+        - FORMAL
+        - CONVERSATIONAL
+        - SCHOLARLY
     CreateMuseumResponse:
       type: object
       properties:
@@ -234,6 +302,10 @@ components:
           type: string
           minLength: 1
           pattern: ^[a-z0-9-]+$
+        cityCountry:
+          type: string
+          minLength: 1
+          maxLength: 200
         adminEmail:
           type: string
           format: email
@@ -248,21 +320,60 @@ components:
     UpdateMuseumRequest:
       type: object
       properties:
+        name:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+          minLength: 1
+          pattern: ^[a-z0-9-]+$
         status:
           $ref: "#/components/schemas/MuseumStatus"
+        cityCountry:
+          type:
+            - string
+            - "null"
+          maxLength: 200
         ticketValidationUrl:
           type:
             - string
             - "null"
           format: uri
+        gateMode:
+          $ref: "#/components/schemas/GateMode"
+        allowedTicketPrefix:
+          type:
+            - string
+            - "null"
+          maxLength: 64
+        graceWindowMinutes:
+          type: integer
+          minimum: 0
+          maximum: 1440
         systemPrompt:
           type:
             - string
             - "null"
+        personaName:
+          type:
+            - string
+            - "null"
+          maxLength: 200
+        guideStyleTone:
+          $ref: "#/components/schemas/GuideStyleTone"
         defaultVoiceId:
           type:
             - string
             - "null"
+        speakingRate:
+          type: number
+          minimum: 0.5
+          maximum: 2
+        pronunciationHints:
+          type:
+            - string
+            - "null"
+      additionalProperties: false
     AdminUser:
       type: object
       properties:
@@ -272,21 +383,48 @@ components:
         email:
           type: string
           format: email
+        displayName:
+          type:
+            - string
+            - "null"
         role:
           type: string
           enum:
             - SYSTEM_ADMIN
             - MUSEUM_ADMIN
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - INVITED
+            - SUSPENDED
         museumId:
           type:
             - string
             - "null"
           format: uuid
+        museumName:
+          type:
+            - string
+            - "null"
+        lastLoginAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
       required:
         - id
         - email
+        - displayName
         - role
+        - status
         - museumId
+        - museumName
+        - lastLoginAt
+        - createdAt
     AddMuseumAdminRequest:
       type: object
       properties:
@@ -296,6 +434,10 @@ components:
         password:
           type: string
           minLength: 8
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 200
       required:
         - email
         - password
@@ -590,6 +732,441 @@ components:
         displayOrder:
           type: integer
           minimum: 0
+    ListAdminsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUser"
+        nextCursor:
+          type:
+            - string
+            - "null"
+      required:
+        - data
+        - nextCursor
+    AdminStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - INVITED
+        - SUSPENDED
+    CreateAdminRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 200
+        role:
+          type: string
+          enum:
+            - SYSTEM_ADMIN
+            - MUSEUM_ADMIN
+        museumId:
+          type: string
+          format: uuid
+          description: Required when role is MUSEUM_ADMIN.
+      required:
+        - email
+        - password
+        - role
+    UpdateAdminRequest:
+      type: object
+      properties:
+        displayName:
+          type:
+            - string
+            - "null"
+          minLength: 1
+          maxLength: 200
+        status:
+          $ref: "#/components/schemas/AdminStatus"
+        password:
+          type: string
+          minLength: 8
+      additionalProperties: false
+    ListAuditLogsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLogEntry"
+        nextCursor:
+          type:
+            - string
+            - "null"
+      required:
+        - data
+        - nextCursor
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        action:
+          $ref: "#/components/schemas/AuditAction"
+        entityType:
+          type: string
+        entityId:
+          type: string
+        entityLabel:
+          type: string
+        museumId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        museumName:
+          type:
+            - string
+            - "null"
+        actorId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        actorEmail:
+          type:
+            - string
+            - "null"
+        actorDisplayName:
+          type:
+            - string
+            - "null"
+        actorRole:
+          type:
+            - string
+            - "null"
+          enum:
+            - SYSTEM_ADMIN
+            - MUSEUM_ADMIN
+            - null
+        before: {}
+        after: {}
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - action
+        - entityType
+        - entityId
+        - entityLabel
+        - museumId
+        - museumName
+        - actorId
+        - actorEmail
+        - actorDisplayName
+        - actorRole
+        - createdAt
+    AuditAction:
+      type: string
+      enum:
+        - CREATE
+        - UPDATE
+        - DELETE
+    TenantOverview:
+      type: object
+      properties:
+        museumId:
+          type: string
+          format: uuid
+        museumName:
+          type: string
+        stats:
+          $ref: "#/components/schemas/MuseumStats"
+        rooms:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomReadiness"
+        tier:
+          type: string
+          enum:
+            - BASIC
+            - PRO
+            - ENTERPRISE
+        subscriptionStatus:
+          type: string
+          enum:
+            - ACTIVE
+            - PAST_DUE
+            - CANCELED
+        limits:
+          type: object
+          properties:
+            maxRooms:
+              type:
+                - integer
+                - "null"
+            maxItemsPerRoom:
+              type:
+                - integer
+                - "null"
+            maxAdminUsers:
+              type:
+                - integer
+                - "null"
+          required:
+            - maxRooms
+            - maxItemsPerRoom
+            - maxAdminUsers
+      required:
+        - museumId
+        - museumName
+        - stats
+        - rooms
+        - tier
+        - subscriptionStatus
+        - limits
+    MuseumStats:
+      type: object
+      properties:
+        roomCount:
+          type: integer
+          minimum: 0
+        itemCount:
+          type: integer
+          minimum: 0
+        adminCount:
+          type: integer
+          minimum: 0
+        roomsMissingNarration:
+          type: integer
+          minimum: 0
+        roomsWithoutItems:
+          type: integer
+          minimum: 0
+        roomsReady:
+          type: integer
+          minimum: 0
+        roomsInSequence:
+          type: integer
+          minimum: 0
+        lastEditedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+      required:
+        - roomCount
+        - itemCount
+        - adminCount
+        - roomsMissingNarration
+        - roomsWithoutItems
+        - roomsReady
+        - roomsInSequence
+        - lastEditedAt
+    RoomReadiness:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        storyOrder:
+          type: integer
+        title:
+          type: string
+        readiness:
+          type: string
+          enum:
+            - ready
+            - incomplete
+            - empty
+        itemCount:
+          type: integer
+          minimum: 0
+        narrationChars:
+          type: integer
+          minimum: 0
+        hasAudio:
+          type: boolean
+        inSequence:
+          type: boolean
+          description: Reachable by following nextRoomId from the first room.
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - storyOrder
+        - title
+        - readiness
+        - itemCount
+        - narrationChars
+        - hasAudio
+        - inSequence
+        - updatedAt
+    SystemHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - degraded
+        version:
+          type: string
+        environment:
+          type: string
+        dbLatencyMs:
+          type: integer
+          minimum: 0
+        uptimeSeconds:
+          type: integer
+          minimum: 0
+        adapters:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdapterHealth"
+        checkedAt:
+          type: string
+          format: date-time
+      required:
+        - status
+        - version
+        - environment
+        - dbLatencyMs
+        - uptimeSeconds
+        - adapters
+        - checkedAt
+    AdapterHealth:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        provider:
+          type: string
+        mode:
+          type: string
+          enum:
+            - live
+            - fake
+            - unconfigured
+        state:
+          type: string
+          enum:
+            - healthy
+            - degraded
+            - retrying
+            - breaker_open
+            - unknown
+        consecutiveFailures:
+          type: integer
+          minimum: 0
+        breakerOpenedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        timeoutMs:
+          type:
+            - integer
+            - "null"
+        note:
+          type: string
+      required:
+        - id
+        - label
+        - provider
+        - mode
+        - state
+        - consecutiveFailures
+        - breakerOpenedAt
+        - timeoutMs
+        - note
+    SpendResponse:
+      type: object
+      properties:
+        window:
+          type: string
+          enum:
+            - 7d
+            - 30d
+            - 90d
+        since:
+          type: string
+          format: date-time
+        currency:
+          type: string
+          enum:
+            - ETB
+        totalEtb:
+          type: string
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpendRow"
+      required:
+        - window
+        - since
+        - currency
+        - totalEtb
+        - rows
+    SpendRow:
+      type: object
+      properties:
+        museumId:
+          type: string
+          format: uuid
+        museumName:
+          type: string
+        slug:
+          type: string
+        cityCountry:
+          type:
+            - string
+            - "null"
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - SUSPENDED
+        tier:
+          type: string
+          enum:
+            - BASIC
+            - PRO
+            - ENTERPRISE
+        subscriptionStatus:
+          type: string
+          enum:
+            - ACTIVE
+            - PAST_DUE
+            - CANCELED
+        paidAmountEtb:
+          type: string
+          description: Fixed to 2 decimal places.
+        paymentCount:
+          type: integer
+          minimum: 0
+        lastPaidAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+      required:
+        - museumId
+        - museumName
+        - slug
+        - cityCountry
+        - status
+        - tier
+        - subscriptionStatus
+        - paidAmountEtb
+        - paymentCount
+        - lastPaidAt
   parameters: {}
 paths:
   /health:
@@ -679,6 +1256,28 @@ paths:
           required: false
           description: Opaque cursor from a previous page.
           name: cursor
+          in: query
+        - schema:
+            type: string
+            enum:
+              - "true"
+              - "false"
+            description: Include per-museum counts. Costs one aggregate query per page.
+          required: false
+          description: Include per-museum counts. Costs one aggregate query per page.
+          name: withStats
+          in: query
+        - schema:
+            $ref: "#/components/schemas/MuseumStatus"
+          required: false
+          name: status
+          in: query
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+          required: false
+          name: search
           in: query
       responses:
         "200":
@@ -1450,6 +2049,700 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/admins:
+    get:
+      tags:
+        - Admins
+      summary: List admin accounts
+      description: A MUSEUM_ADMIN sees only its own museum’s seats and never an
+        operator account; scope comes from the token, not from ?museumId.
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+            description: Page size. Defaults to 50, capped at 200.
+          required: false
+          description: Page size. Defaults to 50, capped at 200.
+          name: limit
+          in: query
+        - schema:
+            type: string
+            description: Opaque cursor from a previous page.
+          required: false
+          description: Opaque cursor from a previous page.
+          name: cursor
+          in: query
+        - schema:
+            type: string
+            format: uuid
+            description: SYSTEM_ADMIN only. A MUSEUM_ADMIN is always scoped to its own
+              museum.
+          required: false
+          description: SYSTEM_ADMIN only. A MUSEUM_ADMIN is always scoped to its own museum.
+          name: museumId
+          in: query
+        - schema:
+            type: string
+            enum:
+              - SYSTEM_ADMIN
+              - MUSEUM_ADMIN
+          required: false
+          name: role
+          in: query
+        - schema:
+            $ref: "#/components/schemas/AdminStatus"
+          required: false
+          name: status
+          in: query
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+          required: false
+          name: search
+          in: query
+      responses:
+        "200":
+          description: Paginated list of admin accounts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAdminsResponse"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags:
+        - Admins
+      summary: Create an admin account (SYSTEM_ADMIN only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAdminRequest"
+      responses:
+        "201":
+          description: Account created, in INVITED status until its first login.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Unique constraint conflict, or a room delete blocked by a reference
+            (CONFLICT / ROOM_REFERENCED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Request body exceeds the 100kb cap (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/admins/{id}:
+    patch:
+      tags:
+        - Admins
+      summary: Update an admin’s display name, status, or password
+      description: "Role is deliberately not editable: moving a seat across the tenant
+        boundary in one PATCH would be a silent privilege change. Delete and
+        re-create instead."
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: id
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAdminRequest"
+      responses:
+        "200":
+          description: Updated account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Unique constraint conflict, or a room delete blocked by a reference
+            (CONFLICT / ROOM_REFERENCED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Request body exceeds the 100kb cap (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags:
+        - Admins
+      summary: Delete an admin account
+      description: Refused for your own account, and for a museum’s last active
+        administrator — both would strand someone.
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: id
+          in: path
+      responses:
+        "204":
+          description: Account deleted. Its audit trail is retained.
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Unique constraint conflict, or a room delete blocked by a reference
+            (CONFLICT / ROOM_REFERENCED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/audit-logs:
+    get:
+      tags:
+        - Audit
+      summary: Read the admin audit trail
+      description: Newest first. A MUSEUM_ADMIN sees only its own museum’s rows;
+        control-plane events, which carry no museumId, stay invisible to it.
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+            description: Page size. Defaults to 50, capped at 200.
+          required: false
+          description: Page size. Defaults to 50, capped at 200.
+          name: limit
+          in: query
+        - schema:
+            type: string
+            description: Opaque cursor from a previous page.
+          required: false
+          description: Opaque cursor from a previous page.
+          name: cursor
+          in: query
+        - schema:
+            type: string
+            format: uuid
+            description: SYSTEM_ADMIN only. A MUSEUM_ADMIN is always scoped to its own
+              museum.
+          required: false
+          description: SYSTEM_ADMIN only. A MUSEUM_ADMIN is always scoped to its own museum.
+          name: museumId
+          in: query
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 50
+          required: false
+          name: entityType
+          in: query
+        - schema:
+            $ref: "#/components/schemas/AuditAction"
+          required: false
+          name: action
+          in: query
+        - schema:
+            type: string
+            format: uuid
+          required: false
+          name: actorId
+          in: query
+        - schema:
+            type: string
+            format: date-time
+            description: Inclusive lower bound on createdAt.
+          required: false
+          description: Inclusive lower bound on createdAt.
+          name: since
+          in: query
+        - schema:
+            type: string
+            format: date-time
+            description: Exclusive upper bound on createdAt.
+          required: false
+          description: Exclusive upper bound on createdAt.
+          name: until
+          in: query
+      responses:
+        "200":
+          description: Paginated audit entries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAuditLogsResponse"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/overview:
+    get:
+      tags:
+        - Overview
+      summary: Authoring readiness for one museum
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            description: Required for SYSTEM_ADMIN. Ignored for MUSEUM_ADMIN.
+          required: false
+          description: Required for SYSTEM_ADMIN. Ignored for MUSEUM_ADMIN.
+          name: museumId
+          in: query
+      responses:
+        "200":
+          description: Counts plus a per-room readiness breakdown.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantOverview"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/system/health:
+    get:
+      tags:
+        - Overview
+      summary: Outbound dependency status (SYSTEM_ADMIN only)
+      description: 'Reports configuration and circuit-breaker state. It does not probe
+        the vendors: pinging a paid API on every dashboard load is a bill, not a
+        feature, so an adapter nothing has called yet reports "unknown".'
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Adapter states as this process currently sees them.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemHealth"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: A dependency is unreachable (UPSTREAM_UNAVAILABLE).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/billing/checkout:
+    post:
+      tags:
+        - Billing
+      summary: Start a subscription checkout
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tier:
+                  type: string
+                  enum:
+                    - BASIC
+                    - PRO
+                    - ENTERPRISE
+                museumId:
+                  type: string
+                  format: uuid
+              required:
+                - tier
+      responses:
+        "201":
+          description: Checkout created; redirect the caller to checkoutUrl.
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Unique constraint conflict, or a room delete blocked by a reference
+            (CONFLICT / ROOM_REFERENCED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Request body exceeds the 100kb cap (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited (RATE_LIMITED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: A dependency is unreachable (UPSTREAM_UNAVAILABLE).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/billing/spend:
+    get:
+      tags:
+        - Billing
+      summary: Collected revenue per museum (SYSTEM_ADMIN only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - 7d
+              - 30d
+              - 90d
+            default: 30d
+          required: false
+          name: window
+          in: query
+        - schema:
+            type: string
+            enum:
+              - ACTIVE
+              - SUSPENDED
+          required: false
+          name: status
+          in: query
+      responses:
+        "200":
+          description: Per-museum totals over the requested window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpendResponse"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/billing/tier:
+    post:
+      tags:
+        - Billing
+      summary: Manually override a museum’s tier (SYSTEM_ADMIN only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                museumId:
+                  type: string
+                  format: uuid
+                tier:
+                  type: string
+                  enum:
+                    - BASIC
+                    - PRO
+                    - ENTERPRISE
+                subscriptionStatus:
+                  type: string
+                  enum:
+                    - ACTIVE
+                    - PAST_DUE
+                    - CANCELED
+                subscriptionRenewsAt:
+                  type: string
+                  format: date-time
+                reason:
+                  type: string
+                  minLength: 10
+              required:
+                - museumId
+                - tier
+                - reason
+      responses:
+        "200":
+          description: Tier applied and recorded in the audit trail.
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Request body exceeds the 100kb cap (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /tickets/validate:
+    post:
+      tags:
+        - Tickets
+      summary: Check a visitor ticket against the museum’s vendor
+      description: "Unauthenticated and rate limited twice: per caller IP, and per
+        museum so one tenant cannot exhaust the vendor allowance.
+        ticketRequired=false means the museum has no gate configured, so valid
+        is vacuously true."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                museumId:
+                  type: string
+                  format: uuid
+                ticketCode:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+              required:
+                - museumId
+                - ticketCode
+      responses:
+        "200":
+          description: Validation result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  ticketRequired:
+                    type: boolean
+                required:
+                  - valid
+                  - ticketRequired
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Request body exceeds the 100kb cap (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: nextRoomId crosses museums or forms a cycle (INVALID_ROOM_SEQUENCE).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited (RATE_LIMITED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: A dependency is unreachable (UPSTREAM_UNAVAILABLE).
           content:
             application/json:
               schema:

@@ -13,13 +13,21 @@ export class FakePayment implements FakePaymentProvider {
   private initializeCalls = 0;
   private verifyCalls = 0;
   private verifyAmount = '4500.00';
+  /**
+   * What each checkout was actually opened for. Without this every verify
+   * echoed the PRO price, so a local BASIC or ENTERPRISE checkout came back as
+   * an amount mismatch and could never be completed.
+   */
+  private readonly initializedAmounts = new Map<string, string>();
 
   setMode(mode: FakePaymentMode): void {
     this.mode = mode;
   }
 
+  /** An explicit amount is a test asserting a mismatch, so it wins outright. */
   setVerifyAmount(amount: string): void {
     this.verifyAmount = amount;
+    this.initializedAmounts.clear();
   }
 
   getCallCount(): number {
@@ -40,6 +48,7 @@ export class FakePayment implements FakePaymentProvider {
     this.verifyCalls = 0;
     this.mode = 'success';
     this.verifyAmount = '4500.00';
+    this.initializedAmounts.clear();
   }
 
   async initialize(
@@ -57,8 +66,14 @@ export class FakePayment implements FakePaymentProvider {
       throw Object.assign(new Error('Fake init failure'), { statusCode: 500 });
     }
 
+    this.initializedAmounts.set(input.txRef, input.amount);
+
+    // Sends the browser straight back to the console's return page, the same
+    // way a real provider eventually would. A URL at an invented host looked
+    // more like a provider but dead-ended the local walkthrough: nothing came
+    // back, so the poll that applies the tier never ran.
     return {
-      checkoutUrl: `https://fake-chapa.test/checkout/${input.txRef}`,
+      checkoutUrl: `${input.returnUrl}?tx_ref=${encodeURIComponent(input.txRef)}&status=success`,
       providerRef: `FAKE-${input.txRef}`,
     };
   }
@@ -73,7 +88,11 @@ export class FakePayment implements FakePaymentProvider {
       });
     }
 
-    const base = { amount: this.verifyAmount, currency: 'ETB', raw: {} };
+    const base = {
+      amount: this.initializedAmounts.get(txRef) ?? this.verifyAmount,
+      currency: 'ETB',
+      raw: {},
+    };
 
     switch (this.mode) {
       case 'fail':
