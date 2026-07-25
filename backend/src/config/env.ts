@@ -18,8 +18,15 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+  // Read directly by tests/setup/testEnv.ts before this module loads, which
+  // swaps it into DATABASE_URL for the test process only (§17.1) — never
+  // used by the app itself, documented here just so it isn't a mystery var.
+  TEST_DATABASE_URL: z.string().optional(),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
-  JWT_EXPIRES_IN: z.string().default('12h'),
+  JWT_EXPIRES_IN: z
+    .string()
+    .regex(/^\d+(ms|s|m|h|d|w|y)$/, 'Must look like a duration, e.g. 12h, 30m, 7d')
+    .default('12h'),
   CORS_ALLOWED_ORIGINS: z
     .string()
     .default('')

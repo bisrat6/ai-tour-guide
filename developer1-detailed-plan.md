@@ -196,7 +196,7 @@ Exit criteria: re-running the seed changes nothing, both museums have four rooms
 
 ### D1-3 — Authentication
 
-**Status:** Not started
+**Status:** Done
 
 Goal: secure the admin backend.
 

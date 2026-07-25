@@ -1,8 +1,9 @@
+import type { AdminRole } from '@prisma/client';
 import type { Logger } from 'pino';
 
 export interface AdminContext {
   id: string;
-  role: 'SYSTEM_ADMIN' | 'MUSEUM_ADMIN';
+  role: AdminRole;
   museumId: string | null;
 }
 

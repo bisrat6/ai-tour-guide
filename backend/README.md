@@ -7,10 +7,10 @@ for the full specification and
 [developer1-detailed-plan.md](../developer1-detailed-plan.md) for how the
 admin foundation (this package, so far) is being built phase by phase.
 
-**Status:** D1-0 — Contract first. There is no real Express app, database, or
-authentication yet — those land in D1-1 onward. What exists today is the
-admin API _contract_ (Zod schemas → OpenAPI document) and a mock server that
-implements it in-memory, so client work can start immediately.
+**Status:** D1-3 — Authentication. Real Express app, Postgres via Prisma,
+seeded museum content, `POST /admin/login`, JWT auth, and the
+`requireAuth` / `requireRole` / `requireMuseumScope` middlewares. The D1-0
+mock server remains available for clients that prefer the in-memory contract.
 
 ## Quick start
 
@@ -25,38 +25,44 @@ npm install
 | `npm run lint` / `lint:fix`       | ESLint (flat config, `@typescript-eslint`)                                                                                                       |
 | `npm run format` / `format:write` | Prettier check / write                                                                                                                           |
 | `npm run generate:openapi`        | Regenerates `openapi/openapi.yaml` from the Zod schemas under `src/modules/*/schemas.ts` — this is the source of truth, never hand-edit the YAML |
+| `npm run dev`                     | Starts the real Express app (`PORT`, default 3000; local `.env` may use 3001)                                                                    |
+| `npm run seed`                    | Seeds SYSTEM_ADMIN + both museums' rooms/items/personas into Postgres                                                                            |
 | `npm run mock`                    | Starts the mock admin API on `http://localhost:4000` (`MOCK_PORT` to override), fixtures loaded from `../data/*.json`                            |
-| `npm test`                        | Runs the Vitest suite                                                                                                                            |
+| `npm test`                        | Runs Vitest (unit + integration). Integration tests require `TEST_DATABASE_URL` pointing at a throwaway DB                                       |
+
+## Real app (local)
+
+1. Copy `.env.example` → `.env` and fill in `DATABASE_URL`, `JWT_SECRET`
+   (≥32 chars), and the `SEED_*` passwords.
+2. Create the Postgres database named in `DATABASE_URL` (and a separate
+   throwaway DB for `TEST_DATABASE_URL` — integration tests truncate it).
+3. `npx prisma migrate deploy` then `npm run seed` then `npm run dev`.
+
+Seeded accounts (passwords come from your `.env` `SEED_*` vars):
+
+| Role                  | Email                  |
+| --------------------- | ---------------------- |
+| SYSTEM_ADMIN          | `SEED_SYSTEM_ADMIN_EMAIL` (default `system@adwa.dev`) |
+| MUSEUM_ADMIN (Adwa)   | `admin@adwamuseum.org` |
+| MUSEUM_ADMIN (Louvre) | `admin@louvre.fr`      |
+
+```bash
+curl -s -X POST http://localhost:3001/admin/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"system@adwa.dev","password":"<SEED_SYSTEM_ADMIN_PASSWORD>"}'
+```
+
+Use the returned JWT as `Authorization: Bearer <token>` on `/admin/*` routes.
 
 ## Mock server
 
 `npm run mock` implements every route in `openapi/openapi.yaml` against
-in-memory fixtures built from the two existing content sets in `../data/`.
-It's for other developers to write and run real client code against before
-the real app exists — it is **not** the real implementation (no Postgres, no
-real JWTs, no bcrypt), and it resets on every restart. IDs are deterministic
-(hashed from museum slug + legacy id) so they're stable across restarts even
-though the store itself isn't persisted.
+in-memory fixtures built from `../data/`. It is **not** the real
+implementation (no Postgres, no real JWTs, no bcrypt). IDs are deterministic
+so they're stable across restarts.
 
-Seeded accounts (printed on startup):
-
-| Role                  | Email                  | Password       |
-| --------------------- | ---------------------- | -------------- |
-| SYSTEM_ADMIN          | `system@adwa.dev`      | `dev-password` |
-| MUSEUM_ADMIN (Adwa)   | `admin@adwamuseum.org` | `dev-password` |
-| MUSEUM_ADMIN (Louvre) | `admin@louvre.fr`      | `dev-password` |
-
-```bash
-curl -s -X POST http://localhost:4000/admin/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"admin@adwamuseum.org","password":"dev-password"}'
-```
-
-Use the returned `token` as `Authorization: Bearer <token>` on subsequent
-requests. The mock enforces the same tenant-isolation rules as the spec
-(§8.4, §14.2): a `MUSEUM_ADMIN`'s `museumId` always comes from their token,
-never from the request, and cross-museum access returns
-`403 CROSS_TENANT_ACCESS`.
+Mock seeded accounts (printed on startup): `system@adwa.dev`,
+`admin@adwamuseum.org`, `admin@louvre.fr` — password `dev-password` for all.
 
 ## Repository layout
 

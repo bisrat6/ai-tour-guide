@@ -27,10 +27,11 @@ async function seedSystemAdmin() {
 
   const passwordHash = await bcrypt.hash(env.SEED_SYSTEM_ADMIN_PASSWORD, 12);
 
+  const email = env.SEED_SYSTEM_ADMIN_EMAIL.trim().toLowerCase();
   const admin = await prisma.adminUser.upsert({
-    where: { email: env.SEED_SYSTEM_ADMIN_EMAIL },
+    where: { email },
     create: {
-      email: env.SEED_SYSTEM_ADMIN_EMAIL,
+      email,
       passwordHash,
       role: 'SYSTEM_ADMIN',
       museumId: null,
@@ -61,10 +62,11 @@ async function seedMuseums() {
         update: { name: spec.name, systemPrompt },
       });
 
+      const adminEmail = spec.adminEmail.trim().toLowerCase();
       await tx.adminUser.upsert({
-        where: { email: spec.adminEmail },
+        where: { email: adminEmail },
         create: {
-          email: spec.adminEmail,
+          email: adminEmail,
           passwordHash: museumAdminPasswordHash,
           role: 'MUSEUM_ADMIN',
           museumId: museum.id,
