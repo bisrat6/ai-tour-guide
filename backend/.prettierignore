@@ -3,3 +3,6 @@ dist
 coverage
 openapi/openapi.yaml
 package-lock.json
+
+# Re-exported by the Postman app, which formats JSON its own way.
+postman

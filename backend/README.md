@@ -121,6 +121,7 @@ backend/
   mock/                    D1-0 mock server (in-memory contract simulator, not the real app)
   openapi/
     openapi.yaml           generated — do not hand-edit
+  postman/                 end-to-end collection run against a live server — see postman/README.md
   tests/
     unit/                  deterministicId, schemas
     integration/            auth, museums, rooms, items, isolation (§17.2 matrix), errorEnvelope
@@ -150,3 +151,7 @@ full phase-by-phase history and
 - `tests/integration/errorEnvelope.test.ts` covers the failure paths that
   never reach a route handler — malformed JSON, oversized bodies, unmatched
   routes — so the §7.1 envelope guarantee holds even there.
+- `postman/` holds a manual end-to-end pass over the same surface against a
+  running, seeded server: 74 requests, 290 assertions, repeatable. It is not
+  part of CI. See [postman/README.md](postman/README.md) for setup, and
+  [docs/d1-audit.md](../docs/d1-audit.md) for the audit findings it documents.
