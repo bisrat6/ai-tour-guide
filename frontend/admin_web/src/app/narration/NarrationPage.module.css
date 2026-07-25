@@ -1,0 +1,99 @@
+.page {
+  padding: var(--space-2);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.headerCard {
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-3);
+}
+
+.layout {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+}
+
+.groupStack {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.groupSection {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.groupHeader {
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.roomList {
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.roomButton {
+  width: 100%;
+  text-align: left;
+  min-height: var(--target-min);
+  border-radius: var(--radius-control);
+  border: var(--border-hairline-width) solid var(--border-hairline);
+  background: var(--surface-raised);
+  color: var(--content-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  padding: var(--space-1);
+}
+
+.roomButton:hover {
+  border-color: var(--border-control);
+}
+
+.roomButtonActive {
+  border-color: var(--accent-fill);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-fill) 25%, transparent);
+}
+
+.workspace {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.metaGrid {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.playbackControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.workspaceActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.muted {
+  color: var(--content-secondary);
+}
+
+@media (max-width: 1023px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+

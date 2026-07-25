@@ -1,0 +1,149 @@
+.page {
+  padding: var(--space-2);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.headerCard {
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-3);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.muted {
+  color: var(--content-secondary);
+}
+
+.panelCard {
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-2);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.editorCard {
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.formGrid {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.itemSummaryPanel {
+  border-top: var(--border-hairline-width) solid var(--border-hairline);
+  padding-top: var(--space-2);
+  display: grid;
+  gap: var(--space-1);
+}
+
+.itemSummaryList {
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.itemSummaryRow {
+  min-height: var(--target-min);
+  border-radius: var(--radius-control);
+  border: var(--border-hairline-width) solid var(--border-hairline);
+  background: var(--surface-raised);
+  padding: var(--space-1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.stickySaveBar {
+  position: sticky;
+  bottom: 0;
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--surface-raised);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-1);
+  z-index: 2;
+}
+
+.dirtyText {
+  color: var(--content-secondary);
+}
+
+.saveActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.rowActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  flex-wrap: wrap;
+}
+
+.mediaPanel {
+  border-top: var(--border-hairline-width) solid var(--border-hairline);
+  padding-top: var(--space-2);
+  display: grid;
+  gap: var(--space-1);
+}
+
+.imagePreview {
+  inline-size: 100%;
+  max-inline-size: 480px;
+  border-radius: var(--radius-control);
+  border: var(--border-hairline-width) solid var(--border-hairline);
+  object-fit: cover;
+  aspect-ratio: 16 / 9;
+  background: var(--surface-canvas);
+}
+
+.mediaPlaceholder {
+  inline-size: 100%;
+  max-inline-size: 480px;
+  min-block-size: 180px;
+  border-radius: var(--radius-control);
+  border: var(--border-hairline-width) dashed var(--border-control);
+  background: var(--surface-canvas);
+  display: grid;
+  place-items: center;
+  padding: var(--space-2);
+}
+
+@media (max-width: 767px) {
+  .headerCard {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stickySaveBar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .itemSummaryRow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

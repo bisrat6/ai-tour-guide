@@ -1,0 +1,71 @@
+.root {
+  display: inline-block;
+  background-color: var(--skeleton-base);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  position: relative;
+}
+
+.text {
+  block-size: 1em;
+  inline-size: 100%;
+  max-inline-size: 16rem;
+}
+
+.line {
+  block-size: var(--border-hairline-width);
+  inline-size: 100%;
+  max-inline-size: 12rem;
+}
+
+.block {
+  block-size: 4rem;
+  inline-size: 100%;
+}
+
+.pill {
+  block-size: 1.75rem;
+  inline-size: 6rem;
+  border-radius: var(--radius-round);
+}
+
+.circle {
+  block-size: 2.5rem;
+  inline-size: 2.5rem;
+  border-radius: var(--radius-round);
+}
+
+.stack {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.sheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--skeleton-sheen) 50%,
+    transparent 100%
+  );
+  opacity: 0.4;
+  animation: skeleton-sheen 1.5s var(--motion-ease) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheen {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+@keyframes skeleton-sheen {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}

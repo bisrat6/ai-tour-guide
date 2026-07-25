@@ -1,0 +1,154 @@
+.row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-block: var(--space-1);
+}
+
+.rowLabel {
+  color: var(--content-secondary);
+  flex-shrink: 0;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+}
+
+.meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+  flex-shrink: 0;
+}
+
+.activeCount {
+  color: var(--content-secondary);
+}
+
+.clearAll {
+  min-inline-size: var(--target-min);
+  padding-inline: var(--space-3);
+  border-radius: var(--radius-control);
+  color: var(--content-primary);
+}
+
+.clearAll:hover:not(:disabled) {
+  background-color: var(--button-ghost-fill-hover);
+}
+
+.shell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: var(--chip-min-height);
+  padding-inline: var(--space-3);
+  border-radius: var(--chip-radius);
+  border: var(--border-hairline-width) solid var(--chip-border);
+  background-color: var(--chip-fill);
+  color: var(--chip-text);
+  white-space: nowrap;
+  transition:
+    background-color var(--motion-inline) var(--motion-ease),
+    border-color var(--motion-inline) var(--motion-ease),
+    box-shadow var(--motion-inline) var(--motion-ease);
+}
+
+.chip:hover:not(:disabled) {
+  background-color: var(--chip-hover-fill);
+}
+
+.chip:active:not(:disabled) {
+  box-shadow: var(--control-press-inset);
+}
+
+.chipSelected {
+  background-color: var(--chip-selected-fill);
+  color: var(--chip-selected-text);
+  border-color: var(--chip-selected-border);
+}
+
+.chipDisabled {
+  background-color: var(--surface-sunken);
+  color: var(--content-muted);
+  border-color: var(--border-hairline);
+  cursor: not-allowed;
+}
+
+.clearChip {
+  min-inline-size: var(--target-min);
+  min-block-size: var(--target-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-control);
+  color: inherit;
+}
+
+.clearChip:hover:not(:disabled) {
+  background-color: var(--button-ghost-fill-hover);
+}
+
+.menu {
+  position: absolute;
+  z-index: 10;
+  min-inline-size: 12rem;
+  max-block-size: 16rem;
+  overflow: auto;
+  margin-block-start: var(--space-1);
+  padding: var(--space-1);
+  border-radius: var(--overlay-radius);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background-color: var(--overlay-surface);
+  box-shadow: var(--panel-shadow);
+}
+
+.menuAnchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  inline-size: 100%;
+  min-block-size: var(--target-min);
+  padding-inline: var(--space-3);
+  border-radius: var(--radius-control);
+  color: var(--content-primary);
+  text-align: start;
+}
+
+.option:hover,
+.optionFocused {
+  background-color: var(--surface-hover);
+}
+
+.optionSelected {
+  color: var(--accent-on-tint);
+}
+
+.optionCount {
+  margin-inline-start: auto;
+  color: var(--content-secondary);
+}
+
+.optionTick {
+  inline-size: 1rem;
+  color: var(--accent-mark);
+  flex-shrink: 0;
+}
+
+.skeletonSummary {
+  inline-size: 6rem;
+}

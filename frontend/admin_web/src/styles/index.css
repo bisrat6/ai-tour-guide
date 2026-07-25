@@ -1,0 +1,12 @@
+/*
+ * Style entry point. Layer order matters: primitives, then the semantic layer
+ * that references them, then the plane-independent scales, then component
+ * handles, then base element styles and the type scale.
+ */
+
+@import './primitives.css';
+@import './semantic.css';
+@import './scales.css';
+@import './components.css';
+@import './base.css';
+@import './typography.css';

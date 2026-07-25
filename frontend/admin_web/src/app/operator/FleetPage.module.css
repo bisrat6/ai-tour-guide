@@ -1,0 +1,219 @@
+.page {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.headerCard {
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.headerTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.muted {
+  color: var(--content-secondary);
+}
+
+.demoText {
+  color: var(--content-muted);
+}
+
+.headerActions {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.filtersRow {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(160px, 220px);
+  gap: var(--space-1);
+}
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-2);
+}
+
+.card {
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-2);
+  display: grid;
+  gap: var(--space-1);
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-1);
+  align-items: flex-start;
+}
+
+.museumName {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.2;
+}
+
+.cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.metric {
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+  padding: 6px 10px;
+  display: inline-flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.metricLabel {
+  color: var(--content-secondary);
+}
+
+.metricValue {
+  color: var(--content-primary);
+}
+
+.spine {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.spineSegment {
+  inline-size: 16px;
+  block-size: 16px;
+  border-radius: var(--radius-round);
+  border: 1px solid transparent;
+  display: grid;
+  place-items: center;
+}
+
+.segmentSuccess {
+  color: var(--feedback-success);
+}
+
+.segmentWarning {
+  color: var(--feedback-warning);
+}
+
+.segmentDanger {
+  color: var(--feedback-danger);
+}
+
+.segmentNeutral {
+  color: var(--feedback-neutral);
+}
+
+.cardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.tableCard {
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-2);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-0-5);
+}
+
+.tableName {
+  display: grid;
+  gap: 2px;
+}
+
+.tableSpend {
+  display: grid;
+  gap: 2px;
+}
+
+.peekSummary {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.peekStats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+
+.peekStat {
+  border-radius: var(--radius-control);
+  border: var(--border-hairline-width) solid var(--border-hairline);
+  padding: var(--space-1);
+  background: var(--surface-sunken);
+}
+
+.peekFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.recordPage {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.recordGrid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--space-2);
+}
+
+.panel {
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-2);
+  display: grid;
+  gap: var(--space-1);
+}
+
+@media (max-width: 1023px) {
+  .filtersRow {
+    grid-template-columns: 1fr;
+  }
+
+  .recordGrid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,171 @@
+/*
+ * Base element styles: reset, plane painting, interactive floor, focus ring and
+ * reduced motion. Every value here is a token reference; no raw values.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background-color: var(--surface-canvas);
+  color: var(--content-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+  font-weight: var(--weight-regular);
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * A plane container paints itself, so data-plane can be set on :root or on any
+ * element further down and the values below it flip with it.
+ */
+:root,
+[data-plane='tenant'] {
+  color-scheme: light;
+}
+
+[data-plane='control'] {
+  color-scheme: dark;
+}
+
+[data-plane] {
+  background-color: var(--surface-canvas);
+  color: var(--content-primary);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+figure,
+blockquote,
+dl,
+dd {
+  margin: 0;
+}
+
+h1 {
+  font-size: var(--text-title-size);
+  line-height: var(--text-title-line);
+  font-weight: var(--text-title-weight);
+  letter-spacing: var(--text-title-tracking);
+}
+
+h2 {
+  font-size: var(--text-subtitle-size);
+  line-height: var(--text-subtitle-line);
+  font-weight: var(--text-subtitle-weight);
+  letter-spacing: var(--text-subtitle-tracking);
+}
+
+h3 {
+  font-size: var(--text-lead-size);
+  line-height: var(--text-lead-line);
+  font-weight: var(--weight-semibold);
+}
+
+h4,
+h5,
+h6 {
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+  font-weight: var(--weight-semibold);
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+a {
+  color: var(--accent-on-tint);
+  text-underline-offset: 0.2em;
+}
+
+hr {
+  border: 0;
+  border-top: var(--border-hairline-width) solid var(--border-hairline);
+  margin: 0;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: 0;
+  background: none;
+  padding: 0;
+}
+
+/* The 44px interactive floor. */
+button,
+select,
+input:not([type='checkbox']):not([type='radio']),
+[role='button'] {
+  min-block-size: var(--target-min);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th {
+  text-align: start;
+}
+
+/* Visible focus on every interactive element, on both planes. */
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+::selection {
+  background-color: var(--selection-row);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-view: 0ms;
+    --motion-inline: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}

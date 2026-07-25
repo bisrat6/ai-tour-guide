@@ -1,0 +1,218 @@
+.root {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.labelRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+
+.label {
+  color: var(--field-label);
+}
+
+.labelSemibold {
+  font-weight: var(--weight-semibold);
+}
+
+.mark {
+  color: var(--content-secondary);
+}
+
+.controlShell {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input,
+.textarea,
+.select {
+  inline-size: 100%;
+  min-block-size: var(--field-min-height);
+  padding-inline: var(--space-3);
+  border-radius: var(--field-radius);
+  border: var(--border-hairline-width) solid var(--field-border);
+  background-color: var(--field-surface);
+  color: var(--field-text);
+  transition: border-color var(--motion-inline) var(--motion-ease);
+}
+
+.input,
+.select {
+  padding-block: 0;
+}
+
+.textarea {
+  padding-block: var(--space-2);
+  resize: vertical;
+  min-block-size: calc(var(--field-min-height) * 2);
+}
+
+.input:hover:not(:disabled):not(:read-only),
+.textarea:hover:not(:disabled):not(:read-only),
+.select:hover:not(:disabled):not(:read-only) {
+  border-color: var(--content-secondary);
+}
+
+.input:disabled,
+.textarea:disabled,
+.select:disabled,
+.input:read-only,
+.textarea:read-only {
+  background-color: var(--surface-sunken);
+  color: var(--content-muted);
+  border-color: var(--border-hairline);
+}
+
+.input:read-only:not(:disabled),
+.textarea:read-only:not(:disabled) {
+  color: var(--content-primary);
+}
+
+.inputError,
+.textareaError,
+.selectError {
+  border-color: var(--feedback-danger);
+}
+
+.inputWithLeading {
+  padding-inline-start: calc(var(--space-3) + var(--space-4) + var(--space-0-5));
+}
+
+.inputWithTrailing {
+  padding-inline-end: calc(var(--space-3) + var(--space-4) + var(--space-0-5));
+}
+
+.leadingIcon {
+  position: absolute;
+  inset-inline-start: var(--space-3);
+  display: inline-flex;
+  color: var(--content-secondary);
+  pointer-events: none;
+}
+
+.trailingSlot {
+  position: absolute;
+  inset-inline-end: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.shortcutHint {
+  padding-inline: var(--space-1);
+  border-radius: var(--radius-control);
+  border: var(--border-hairline-width) solid var(--border-hairline);
+  color: var(--content-secondary);
+  background-color: var(--surface-sunken);
+}
+
+.clearButton {
+  min-inline-size: var(--target-min);
+  min-block-size: var(--target-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-control);
+  color: var(--content-secondary);
+}
+
+.clearButton:hover:not(:disabled) {
+  background-color: var(--button-ghost-fill-hover);
+}
+
+.hint {
+  color: var(--content-secondary);
+}
+
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-0-5);
+  color: var(--feedback-danger);
+}
+
+.errorMarker {
+  flex-shrink: 0;
+  margin-block-start: var(--space-0-5);
+}
+
+.count {
+  color: var(--content-secondary);
+}
+
+.checkboxLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: var(--target-min);
+  min-inline-size: var(--target-min);
+  padding-inline: var(--space-1);
+  cursor: pointer;
+}
+
+.checkboxLabelDisabled {
+  cursor: not-allowed;
+  color: var(--content-muted);
+}
+
+.checkboxBox {
+  position: relative;
+  inline-size: 1rem;
+  block-size: 1rem;
+  flex-shrink: 0;
+}
+
+.checkboxInput {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.checkboxVisual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1rem;
+  block-size: 1rem;
+  border-radius: var(--radius-control);
+  border: var(--border-hairline-width) solid var(--field-border);
+  background-color: var(--field-surface);
+  color: var(--accent-on-fill);
+  pointer-events: none;
+}
+
+.checkboxInput:checked + .checkboxVisual,
+.checkboxInput:indeterminate + .checkboxVisual {
+  background-color: var(--accent-fill);
+  border-color: var(--accent-fill);
+}
+
+.checkboxInput:disabled + .checkboxVisual {
+  background-color: var(--surface-sunken);
+  border-color: var(--border-hairline);
+}
+
+.checkboxInput:disabled:checked + .checkboxVisual,
+.checkboxInput:disabled:indeterminate + .checkboxVisual {
+  background-color: var(--content-muted);
+  border-color: var(--content-muted);
+}
+
+.checkboxText {
+  color: var(--content-primary);
+}
+
+.loadingShell {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.emDash {
+  color: var(--content-muted);
+}

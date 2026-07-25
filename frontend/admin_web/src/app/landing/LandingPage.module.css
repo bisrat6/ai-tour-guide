@@ -1,0 +1,220 @@
+/*
+ * The landing page is the one surface that shows both planes at once. The
+ * split is the message: the light half is the tenant console's real surface,
+ * the dark half is the control console's, and the seam between them is the
+ * isolation boundary the rest of the product enforces.
+ */
+
+.page {
+  /*
+   * The console type scale tops out at 30px because it is a console. A front
+   * door needs one step above it, declared here and nowhere else.
+   */
+  --landing-hero-size: clamp(2.25rem, 1.4rem + 3.4vw, 3.75rem);
+  --landing-gutter: clamp(var(--space-3), 4vw, var(--space-10));
+
+  min-block-size: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-canvas);
+  color: var(--content-primary);
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--landing-gutter);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-subtitle-size);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--text-subtitle-tracking);
+  color: var(--content-primary);
+}
+
+.brandMark {
+  inline-size: 12px;
+  block-size: 12px;
+  border-radius: var(--radius-round);
+  background: var(--accent-mark);
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.hero {
+  padding: var(--space-8) var(--landing-gutter) var(--space-10);
+}
+
+.heroInner {
+  display: grid;
+  gap: var(--space-3);
+  max-inline-size: 62ch;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--content-secondary);
+}
+
+.headline {
+  margin: 0;
+  font-size: var(--landing-hero-size);
+  line-height: 1.04;
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.03em;
+  color: var(--content-primary);
+  max-inline-size: 18ch;
+}
+
+.lead {
+  margin: 0;
+  color: var(--content-secondary);
+}
+
+/* Cormorant is reserved for museum names, so the sentence ends on the name. */
+.flagship {
+  margin: 0;
+  line-height: var(--text-title-line);
+  color: var(--content-secondary);
+}
+
+.flagship :global(.museum-name) {
+  color: var(--content-primary);
+}
+
+.doors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-block-start: var(--border-hairline-width) solid var(--border-hairline);
+}
+
+.door {
+  padding: var(--space-8) var(--landing-gutter);
+  color: var(--content-primary);
+}
+
+.door[data-plane='tenant'] {
+  background: var(--surface-raised);
+}
+
+.door[data-plane='control'] {
+  background: var(--surface-canvas);
+}
+
+.doorInner {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  max-inline-size: 46ch;
+}
+
+.doorEyebrow {
+  margin: 0;
+  color: var(--accent-on-tint);
+}
+
+.doorTitle {
+  margin: 0;
+  color: var(--content-primary);
+}
+
+.doorSummary {
+  margin: 0;
+  color: var(--content-secondary);
+}
+
+.areaList {
+  margin: var(--space-1) 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+  display: grid;
+}
+
+/* One hairline per navigation area: the rules are the row structure, not trim. */
+.area {
+  display: grid;
+  gap: var(--space-0-5);
+  padding-block: var(--space-2);
+  border-block-start: var(--border-hairline-width) solid var(--border-hairline);
+}
+
+.areaName {
+  font-weight: var(--weight-semibold);
+  color: var(--content-primary);
+}
+
+.areaDetail {
+  color: var(--content-secondary);
+}
+
+.doorCta {
+  justify-self: start;
+}
+
+.footer {
+  padding: var(--space-4) var(--landing-gutter) var(--space-6);
+  border-block-start: var(--border-hairline-width) solid var(--border-hairline);
+}
+
+.footerNote {
+  margin: 0;
+  max-inline-size: 72ch;
+  color: var(--content-secondary);
+}
+
+.visuallyHidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (width < 880px) {
+  .doors {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    padding-block: var(--space-6) var(--space-8);
+  }
+
+  .door {
+    padding-block: var(--space-6);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .door {
+    animation: doorSettle var(--motion-view) var(--motion-ease) both;
+  }
+
+  .door[data-plane='tenant'] {
+    animation-delay: 60ms;
+  }
+
+  .door[data-plane='control'] {
+    animation-delay: 140ms;
+  }
+
+  @keyframes doorSettle {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+  }
+}

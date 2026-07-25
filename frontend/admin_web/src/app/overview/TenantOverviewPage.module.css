@@ -1,0 +1,358 @@
+.page {
+  padding: var(--space-2);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.mainColumn {
+  display: grid;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.header {
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.museumName {
+  color: var(--content-primary);
+}
+
+.spinePanel {
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.spineHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.spineNote {
+  color: var(--content-secondary);
+}
+
+.spineWrap {
+  overflow-x: auto;
+  padding-block-end: var(--space-1);
+}
+
+.spineList {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-inline-size: max-content;
+}
+
+.spineItem {
+  position: relative;
+}
+
+.spineItem:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  inset-block-start: calc(50% - var(--border-hairline-width) / 2);
+  inset-inline-end: calc(var(--space-1) * -1);
+  inline-size: var(--space-1);
+  block-size: var(--border-hairline-width);
+  background: var(--border-hairline);
+}
+
+.spineSegment {
+  border-radius: var(--radius-control);
+  border: var(--border-hairline-width) solid var(--border-control);
+  background: var(--surface-raised);
+  min-inline-size: 64px;
+  min-block-size: var(--target-min);
+  padding-inline: var(--space-1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  color: var(--content-primary);
+  text-decoration: none;
+}
+
+.spineSegment:hover {
+  background: var(--surface-hover);
+}
+
+.segmentOrder {
+  color: var(--content-secondary);
+}
+
+.markerSuccess {
+  color: var(--feedback-success);
+}
+
+.markerWarning {
+  color: var(--feedback-warning);
+}
+
+.markerDanger {
+  color: var(--feedback-danger);
+}
+
+.markerNeutral {
+  color: var(--content-muted);
+}
+
+.spineLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.kpiSection {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}
+
+.chartsSection {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.roomListHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.panelCopy {
+  color: var(--content-secondary);
+}
+
+.roomList {
+  margin-top: var(--space-2);
+  display: grid;
+  gap: var(--space-1);
+}
+
+.roomRow {
+  border: var(--border-hairline-width) solid var(--border-hairline);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  padding: var(--space-2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  scroll-margin-top: var(--space-3);
+}
+
+.roomIdentity {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.roomOrder {
+  min-inline-size: 2ch;
+  color: var(--content-secondary);
+}
+
+.roomStatus {
+  display: grid;
+  justify-items: end;
+  gap: var(--space-0-5);
+}
+
+.roomMeta {
+  color: var(--content-secondary);
+}
+
+.rowBetween {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.changeList {
+  margin-top: var(--space-2);
+  display: grid;
+  gap: var(--space-1);
+}
+
+.changeRow {
+  border-top: var(--border-hairline-width) solid var(--border-hairline);
+  padding-top: var(--space-1);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.changeMeta {
+  color: var(--content-secondary);
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-0-5);
+}
+
+.changeWhen {
+  display: grid;
+  justify-items: end;
+  gap: var(--space-0-5);
+}
+
+.insightsRail {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.gaugeValue {
+  color: var(--content-primary);
+}
+
+.breakdownBar {
+  inline-size: 100%;
+  min-block-size: 18px;
+  border-radius: var(--radius-round);
+  overflow: hidden;
+  border: var(--border-hairline-width) solid var(--border-hairline);
+  display: flex;
+}
+
+.breakdownSegment {
+  flex: var(--segment-share) 0 0;
+}
+
+.breakdownSuccess {
+  background: var(--feedback-success);
+}
+
+.breakdownWarning {
+  background: var(--feedback-warning);
+}
+
+.breakdownDanger {
+  background: var(--feedback-danger);
+}
+
+.breakdownNeutral {
+  background: var(--feedback-neutral);
+}
+
+.insightList {
+  margin-top: var(--space-2);
+  display: grid;
+  gap: var(--space-1);
+}
+
+.insightItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.insightValue {
+  color: var(--content-secondary);
+}
+
+.miniGrid {
+  margin-top: var(--space-2);
+  display: grid;
+  gap: var(--space-1);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.miniKpi {
+  border: var(--border-hairline-width) solid var(--border-hairline);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  padding: var(--space-1);
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.miniValue {
+  color: var(--content-primary);
+}
+
+.rankedList {
+  margin-top: var(--space-2);
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.rankedRow {
+  border-top: var(--border-hairline-width) solid var(--border-hairline);
+}
+
+.rankedLink {
+  min-block-size: var(--target-min);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-decoration: none;
+  color: var(--content-primary);
+  gap: var(--space-2);
+}
+
+.rankedLink:hover {
+  color: var(--accent-on-tint);
+}
+
+.rankedValue {
+  color: var(--content-secondary);
+}
+
+@media (min-width: 1024px) {
+  .kpiSection {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .chartsSection {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .page {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    align-items: start;
+  }
+
+  .insightsRail {
+    position: sticky;
+    top: var(--space-2);
+  }
+}
+
+@media (max-width: 767px) {
+  .roomRow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .roomStatus {
+    justify-items: start;
+  }
+
+  .changeRow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .changeWhen {
+    justify-items: start;
+  }
+}

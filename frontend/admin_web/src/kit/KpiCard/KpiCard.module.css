@@ -1,0 +1,76 @@
+.card {
+  background-color: var(--kpi-surface);
+  border: var(--border-hairline-width) solid var(--kpi-border);
+  border-radius: var(--kpi-radius);
+  padding: var(--space-4);
+}
+
+.label {
+  color: var(--kpi-label);
+  margin: 0;
+  margin-block-end: var(--space-1);
+}
+
+.valueBlock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.value {
+  color: var(--kpi-value);
+  margin: 0;
+}
+
+.unit {
+  color: var(--kpi-value);
+}
+
+.caption {
+  color: var(--content-secondary);
+  margin: 0;
+  margin-block-start: var(--space-2);
+}
+
+.delta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-block-start: var(--space-1);
+}
+
+.deltaSuccess {
+  color: var(--feedback-success);
+}
+
+.deltaDanger {
+  color: var(--feedback-danger);
+}
+
+.deltaNeutral {
+  color: var(--content-secondary);
+}
+
+.stateMessage {
+  color: var(--content-secondary);
+  margin: 0;
+}
+
+.stateActions {
+  margin-block-start: var(--space-2);
+}
+
+.actionButton {
+  min-inline-size: var(--target-min);
+  padding-inline: var(--space-4);
+  border-radius: var(--radius-surface);
+  background-color: var(--action-secondary-fill);
+  color: var(--action-secondary-text);
+  border: var(--border-hairline-width) solid var(--action-secondary-border);
+}
+
+.unauthorizedMessage {
+  color: var(--content-secondary);
+  margin: 0;
+}

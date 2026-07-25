@@ -1,0 +1,186 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.title {
+  color: var(--content-primary);
+  margin: 0;
+}
+
+.chartArea {
+  position: relative;
+  block-size: var(--chart-height, 15rem);
+}
+
+.canvasWrap {
+  block-size: 100%;
+}
+
+.loadingSkeleton {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  block-size: 100%;
+  gap: var(--space-2);
+  padding-block-end: var(--space-2);
+}
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex: 1;
+  padding-inline: var(--space-2);
+}
+
+.barGroup {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: var(--space-1);
+  flex: 1;
+}
+
+.axisLine {
+  block-size: var(--border-hairline-width);
+  background-color: var(--chart-grid);
+}
+
+.stateBlock {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  block-size: 100%;
+  padding: var(--space-4);
+  background-color: var(--panel-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  border-radius: var(--panel-radius);
+}
+
+.stateTitle {
+  color: var(--content-primary);
+  margin: 0;
+}
+
+.stateBody {
+  color: var(--content-secondary);
+  margin: 0;
+  margin-block-start: var(--space-2);
+}
+
+.stateActions {
+  margin-block-start: var(--space-3);
+}
+
+.actionButton {
+  min-inline-size: var(--target-min);
+  padding-inline: var(--space-4);
+  border-radius: var(--radius-surface);
+  background-color: var(--action-secondary-fill);
+  color: var(--action-secondary-text);
+  border: var(--border-hairline-width) solid var(--action-secondary-border);
+}
+
+.tableToggle {
+  align-self: flex-start;
+  min-inline-size: var(--target-min);
+  padding-inline: var(--space-3);
+  border-radius: var(--radius-surface);
+  background-color: var(--action-secondary-fill);
+  color: var(--action-secondary-text);
+  border: var(--border-hairline-width) solid var(--action-secondary-border);
+}
+
+.dataTableVisible {
+  margin-block-start: var(--space-3);
+}
+
+.dataTable {
+  inline-size: 100%;
+  border-collapse: collapse;
+}
+
+.dataTable th,
+.dataTable td {
+  border: var(--border-hairline-width) solid var(--table-hairline);
+  padding: var(--space-2) var(--space-3);
+  text-align: start;
+}
+
+.dataTable th {
+  color: var(--table-header-text);
+}
+
+.dataTable td {
+  color: var(--content-primary);
+}
+
+.dataTable caption {
+  caption-side: top;
+  text-align: start;
+  color: var(--content-secondary);
+  margin-block-end: var(--space-2);
+}
+
+.seriesToggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.seriesButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: var(--target-min);
+  padding-inline: var(--space-3);
+  border-radius: var(--radius-surface);
+  color: var(--content-primary);
+  background-color: transparent;
+  border: var(--border-hairline-width) solid transparent;
+}
+
+.seriesButton:hover {
+  background-color: var(--surface-hover);
+}
+
+.seriesButtonPressed {
+  background-color: var(--surface-hover);
+}
+
+.seriesButtonDisabled {
+  opacity: 0.6;
+}
+
+.swatch {
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
+  border-radius: var(--radius-control);
+  flex-shrink: 0;
+}
+
+.integrationShell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: var(--space-2);
+  block-size: 100%;
+  padding: var(--space-4);
+}
+
+.integrationBody {
+  color: var(--content-secondary);
+  margin: 0;
+}

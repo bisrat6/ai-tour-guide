@@ -1,0 +1,365 @@
+.appRoot {
+  min-height: 100vh;
+}
+
+.signInPage {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-3);
+  background: var(--surface-canvas);
+}
+
+.signInPanel {
+  width: min(100%, 440px);
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.signInHeader {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.signInTitleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.brandMark {
+  inline-size: 32px;
+  block-size: 32px;
+  border-radius: var(--radius-control);
+  background: var(--accent-fill);
+  color: var(--accent-on-fill);
+  display: grid;
+  place-items: center;
+  font-weight: var(--weight-semibold);
+}
+
+.muted {
+  color: var(--content-secondary);
+}
+
+.roleButtons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+
+.fieldStack {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.errorText {
+  color: var(--feedback-danger);
+}
+
+.signInAltDoor {
+  justify-self: start;
+  color: var(--content-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+.signInAltDoor:hover {
+  color: var(--content-primary);
+}
+
+.signInAltDoor:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.tenantShellFrame {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-canvas);
+}
+
+.tenantShell {
+  min-height: 100vh;
+  display: flex;
+  flex: 1;
+}
+
+.tenantShellFrame .tenantShell {
+  min-height: 0;
+}
+
+.scopeBand {
+  min-height: var(--scope-band-min-height);
+  background: var(--scope-band-surface);
+  color: var(--scope-band-content);
+  border-bottom: var(--scope-band-edge-width) solid var(--scope-band-edge-color);
+  padding: var(--space-1) var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  position: sticky;
+  top: 0;
+  z-index: 8;
+}
+
+.scopeBandCopy {
+  min-width: 0;
+}
+
+.sidebar {
+  width: 272px;
+  background: var(--sidebar-surface);
+  color: var(--sidebar-text);
+  border-inline-end: var(--border-hairline-width) solid var(--sidebar-edge);
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  transition: width var(--motion-inline) var(--motion-ease);
+}
+
+.sidebarCollapsed {
+  width: 72px;
+}
+
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.sidebarBrand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--target-min);
+}
+
+.sidebarBrandLabel {
+  color: var(--sidebar-text);
+}
+
+.collapseButton {
+  color: var(--sidebar-text-muted);
+}
+
+.hideWhenCollapsed {
+  display: inline;
+}
+
+.collapsedOnly {
+  display: none;
+}
+
+.collapsedHidden {
+  display: none;
+}
+
+.navGroup {
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.divider {
+  border-top: var(--border-hairline-width) solid var(--sidebar-edge);
+}
+
+.navItem {
+  min-height: var(--sidebar-item-min-height);
+  border-radius: var(--sidebar-item-radius);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  color: var(--sidebar-text-muted);
+  text-decoration: none;
+  padding-inline: var(--space-1);
+  transition:
+    background-color var(--motion-inline) var(--motion-ease),
+    color var(--motion-inline) var(--motion-ease);
+}
+
+.navItem:hover {
+  background: var(--zinc-800);
+  color: var(--sidebar-text);
+}
+
+.navItemActive {
+  background: var(--zinc-800);
+  color: var(--sidebar-text);
+  box-shadow: inset 3px 0 0 var(--sidebar-active-marker);
+}
+
+.navItemStart {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.iconWrap {
+  inline-size: 18px;
+  block-size: 18px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.label {
+  white-space: nowrap;
+}
+
+.countBadge {
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0 var(--space-0-5);
+  border-radius: var(--radius-round);
+  background: var(--status-neutral-tint);
+  color: var(--status-neutral-on-tint);
+  display: grid;
+  place-items: center;
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+  font-weight: var(--weight-semibold);
+}
+
+.sidebarFooter {
+  margin-top: auto;
+  position: relative;
+}
+
+.accountButton {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.accountIdentity {
+  display: grid;
+  text-align: start;
+  gap: 2px;
+}
+
+.avatar {
+  inline-size: 26px;
+  block-size: 26px;
+  border-radius: var(--radius-round);
+  background: var(--status-neutral-tint);
+  color: var(--status-neutral-on-tint);
+  display: grid;
+  place-items: center;
+}
+
+.accountMenu {
+  position: absolute;
+  inset-block-end: calc(100% + var(--space-1));
+  inset-inline-start: 0;
+  width: min(280px, calc(100vw - var(--space-3)));
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--panel-surface);
+  color: var(--content-primary);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-2);
+  display: grid;
+  gap: var(--space-1);
+  z-index: 4;
+}
+
+.contentRegion {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobileBar {
+  min-height: 56px;
+  border-bottom: var(--border-hairline-width) solid var(--border-hairline);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: var(--space-2);
+  background: var(--surface-raised);
+}
+
+.menuButton {
+  color: var(--content-primary);
+}
+
+.pageContent {
+  padding: var(--space-2);
+}
+
+.placeholderCard {
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.drawerScrim {
+  position: fixed;
+  inset: 0;
+  background: var(--surface-scrim);
+  z-index: 5;
+}
+
+.drawerSidebar {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 6;
+}
+
+.scopedDrawerSidebar {
+  inset-block-start: calc(var(--scope-band-min-height) + var(--scope-band-edge-width));
+}
+
+.controlPlane {
+  min-height: 100vh;
+  background: var(--surface-canvas);
+  color: var(--content-primary);
+  padding: var(--space-3);
+}
+
+.controlInner {
+  max-width: 960px;
+  margin: 0 auto;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.notFound {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-3);
+}
+
+.notFoundCard {
+  width: min(100%, 560px);
+}
+
+@media (max-width: 1023px) {
+  .sidebar {
+    width: 272px;
+  }
+
+  .scopeBand {
+    flex-wrap: wrap;
+  }
+}

@@ -1,0 +1,24 @@
+.page {
+  padding: var(--space-2);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.headerCard {
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-3);
+}
+
+.muted {
+  color: var(--content-secondary);
+}
+
+.actorCell {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-0-5);
+}

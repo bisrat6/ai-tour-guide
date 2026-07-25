@@ -1,0 +1,77 @@
+.list {
+  display: flex;
+  gap: var(--space-1);
+  border-block-end: var(--border-hairline-width) solid var(--border-hairline);
+}
+
+.listEnclosed {
+  padding: var(--space-0-5);
+  border: var(--border-hairline-width) solid var(--border-hairline);
+  border-radius: var(--radius-control);
+  border-block-end: var(--border-hairline-width) solid var(--border-hairline);
+}
+
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-block-size: var(--tab-min-height);
+  padding-inline: var(--space-3);
+  color: var(--tab-text);
+  border-radius: var(--radius-control);
+  white-space: nowrap;
+}
+
+.tab:hover:not(:disabled) {
+  background-color: var(--tab-hover-fill);
+}
+
+.tabActive {
+  color: var(--tab-text-active);
+  font-weight: var(--weight-semibold);
+}
+
+.tabDisabled {
+  color: var(--content-muted);
+  cursor: not-allowed;
+}
+
+.tabUnderline.tabActive::after {
+  content: '';
+  position: absolute;
+  inset-inline: var(--space-2);
+  inset-block-end: 0;
+  block-size: 2px;
+  background-color: var(--tab-indicator);
+}
+
+.tabEnclosed.tabActive {
+  background-color: var(--surface-raised);
+  box-shadow: var(--elevation-soft);
+}
+
+.count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 1.25rem;
+  padding-inline: var(--space-0-5);
+  border-radius: var(--badge-radius);
+  background-color: var(--badge-neutral-tint);
+  color: var(--badge-neutral-text);
+  font-weight: var(--weight-semibold);
+}
+
+.panel {
+  padding-block-start: var(--space-3);
+}
+
+.loadingStrip {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.loadingPill {
+  inline-size: 5rem;
+}

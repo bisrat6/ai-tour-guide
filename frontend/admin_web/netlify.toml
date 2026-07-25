@@ -1,0 +1,30 @@
+# Netlify build and routing for the admin console.
+#
+# `base` points Netlify at this folder, so the repository can hold the Flutter
+# app and the console side by side.
+
+[build]
+  base = "adwa_museum/admin-web"
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# The console is a client-routed single page app. Without this, a refresh or a
+# shared link to a nested route such as /app/rooms/:id asks Netlify for a file
+# that was never built and gets a 404. Netlify serves real files first, so
+# /gallery.html and every hashed asset still resolve normally.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# VITE_API_BASE_URL is intentionally not set here. Set it per context in the
+# Netlify UI (Site configuration > Environment variables) so production and
+# deploy previews can point at different backends without a commit:
+#
+#   production      https://<service>.onrender.com
+#   deploy-preview  https://<staging-service>.onrender.com
+#
+# Left unset the console builds in demo mode and runs on fixtures.

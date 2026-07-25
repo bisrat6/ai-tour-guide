@@ -1,0 +1,86 @@
+.root {
+  background-color: var(--panel-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  border-radius: var(--panel-radius);
+}
+
+.inline {
+  padding: var(--space-3);
+}
+
+.region {
+  padding: var(--space-5);
+  min-block-size: 8rem;
+}
+
+.page {
+  padding: var(--space-8);
+  min-block-size: 12rem;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-block-end: var(--space-2);
+}
+
+.marker {
+  flex-shrink: 0;
+  margin-block-start: var(--space-0-5);
+}
+
+.markerFailure {
+  color: var(--feedback-danger);
+}
+
+.markerMuted {
+  color: var(--content-muted);
+}
+
+.markerNeutral {
+  color: var(--feedback-neutral);
+}
+
+.markerAccent {
+  color: var(--accent-mark);
+}
+
+.eyebrow {
+  color: var(--content-secondary);
+  margin-block-end: var(--space-1);
+}
+
+.title {
+  color: var(--content-primary);
+  margin: 0;
+}
+
+.body {
+  color: var(--content-secondary);
+  margin: 0;
+  margin-block-start: var(--space-2);
+}
+
+.footer {
+  color: var(--content-secondary);
+  margin-block-start: var(--space-3);
+}
+
+.actions {
+  margin-block-start: var(--space-3);
+}
+
+.actionButton {
+  min-inline-size: var(--target-min);
+  padding-inline: var(--space-4);
+  border-radius: var(--radius-surface);
+  background-color: var(--action-secondary-fill);
+  color: var(--action-secondary-text);
+  border: var(--border-hairline-width) solid var(--action-secondary-border);
+}
+
+.loading {
+  display: grid;
+  gap: var(--space-2);
+}

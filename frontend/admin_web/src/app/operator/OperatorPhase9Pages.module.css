@@ -1,0 +1,116 @@
+.page {
+  padding: var(--space-2);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.headerCard {
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-1);
+}
+
+.headerTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.muted {
+  color: var(--content-secondary);
+}
+
+.demoText {
+  color: var(--content-muted);
+}
+
+.provenanceRow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.gridTwo {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.filtersRow {
+  display: grid;
+  gap: var(--space-1);
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+}
+
+.statusStack {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.rowMeta {
+  display: grid;
+  gap: 2px;
+}
+
+.inlineBadges {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  flex-wrap: wrap;
+}
+
+.list {
+  margin: 0;
+  padding-left: var(--space-2);
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.monoDate {
+  color: var(--content-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.rowActions {
+  display: inline-flex;
+  gap: var(--space-0-5);
+  flex-wrap: wrap;
+}
+
+.formCard {
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-2);
+  display: grid;
+  gap: var(--space-1);
+}
+
+.formGrid {
+  display: grid;
+  gap: var(--space-1);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 1023px) {
+  .gridTwo,
+  .filtersRow,
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+}

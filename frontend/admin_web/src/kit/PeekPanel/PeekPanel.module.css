@@ -1,0 +1,157 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--overlay-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  border-radius: var(--overlay-radius);
+  box-shadow: var(--panel-shadow);
+  animation: slideIn var(--motion-view) var(--motion-ease);
+}
+
+.widthMd {
+  inline-size: min(100%, 24rem);
+}
+
+.widthLg {
+  inline-size: min(100%, 32rem);
+}
+
+.overlay {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  z-index: 100;
+}
+
+.sheet {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-end: 0;
+  z-index: 1000;
+  max-inline-size: min(100%, 28rem);
+}
+
+.sheetScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background-color: var(--overlay-scrim);
+}
+
+.header {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-block-end: var(--border-hairline-width) solid var(--border-hairline);
+}
+
+.headerRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.titleBlock {
+  display: grid;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.title {
+  margin: 0;
+  color: var(--content-primary);
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--content-secondary);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-round);
+  background-color: var(--badge-success-tint);
+  color: var(--badge-success-text);
+}
+
+.statusDanger {
+  background-color: var(--badge-danger-tint);
+  color: var(--badge-danger-text);
+}
+
+.statusWarning {
+  background-color: var(--badge-warning-tint);
+  color: var(--badge-warning-text);
+}
+
+.statusNeutral {
+  background-color: var(--badge-neutral-tint);
+  color: var(--badge-neutral-text);
+}
+
+.body {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-4);
+}
+
+.footer {
+  padding: var(--space-4);
+  border-block-start: var(--border-hairline-width) solid var(--border-hairline);
+}
+
+.loadingMeta {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.fieldGrid {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.fieldRow {
+  display: grid;
+  gap: var(--space-1);
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+.replicaHost {
+  position: relative;
+  min-block-size: 20rem;
+  padding: var(--space-4);
+  border: var(--border-hairline-width) dashed var(--border-control);
+  border-radius: var(--radius-surface);
+  background-color: var(--surface-canvas);
+}
+
+.replicaBackdrop {
+  position: absolute;
+  inset: 0;
+  background-color: var(--overlay-scrim);
+  border-radius: inherit;
+  opacity: 0.35;
+}
+
+.replicaPanel {
+  position: absolute;
+  inset-block: var(--space-3);
+  inset-inline-end: var(--space-3);
+}

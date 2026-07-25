@@ -1,0 +1,106 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+*.bak
+*.tmp
+*~
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+
+# User-specific / IDE stuff
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+**/build/
+flutter_*.png
+**/doc/api/
+lib/generated_plugin_registrant.dart
+
+# Symbolication / obfuscation related
+app.*.symbols
+app.*.map.json
+*.js.deps
+*.js.map
+*.snapshot
+
+# Android
+.gradle/
+local.properties
+**/android/app/debug
+**/android/app/profile
+**/android/app/release
+
+# iOS / macOS
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/app.flt
+**/ios/Runner/GeneratedPluginRegistrant.h
+**/ios/Runner/GeneratedPluginRegistrant.m
+**/ios/Runner.xcodeproj/project.xcworkspace
+**/ios/Runner.xcworkspace
+**/Pods/
+**/Podfile.lock
+
+# Coverage
+coverage/
+
+# Environment / secret files
+.env
+.env.*
+!.env.example
+
+# Admin web (Vite / Node) build artifacts
+admin_web/dist/
+admin_web/dist-ssr/
+admin_web/*.local
+admin_web/.vite/
+
+# Dependencies
+node_modules/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Stitch HTML exports (source reference only, lives under mobile/)
+stitch_museum_guide_home/
+
+# The API contract now lives in this repository at backend/postman/, which
+# src/api/contract.test.ts reads directly, so no local working copy is kept.
+postman/
+
+# OS generated files
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# The upstream repository kept all docs out of version control. In this
+# monorepo docs are committed alongside the code, so only the original scratch
+# folder stays ignored.
+/readme/

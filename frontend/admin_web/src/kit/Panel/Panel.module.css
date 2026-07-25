@@ -1,0 +1,80 @@
+.panel {
+  background-color: var(--panel-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  border-radius: var(--panel-radius);
+  box-shadow: var(--panel-shadow);
+}
+
+.padded {
+  padding: var(--space-5);
+}
+
+.title {
+  color: var(--content-primary);
+  margin: 0;
+  margin-block-end: var(--space-1);
+}
+
+.description {
+  color: var(--content-secondary);
+  margin: 0;
+  margin-block-end: var(--space-3);
+}
+
+.actions {
+  margin-block-start: var(--space-3);
+}
+
+.integrationPending {
+  border-style: dashed;
+  border-color: var(--border-control);
+  box-shadow: none;
+}
+
+.eyebrow {
+  color: var(--content-secondary);
+  margin: 0;
+  margin-block-end: var(--space-1);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-block-end: var(--space-2);
+}
+
+.marker {
+  flex-shrink: 0;
+  margin-block-start: var(--space-0-5);
+  color: var(--feedback-neutral);
+}
+
+.body {
+  color: var(--content-secondary);
+  margin: 0;
+}
+
+.footer {
+  color: var(--content-secondary);
+  margin: 0;
+  margin-block-start: var(--space-3);
+}
+
+.inline {
+  padding: var(--space-3);
+}
+
+.region {
+  padding: var(--space-5);
+  min-block-size: 8rem;
+}
+
+.actionButton {
+  min-inline-size: var(--target-min);
+  padding-inline: var(--space-4);
+  border-radius: var(--radius-surface);
+  background-color: var(--action-secondary-fill);
+  color: var(--action-secondary-text);
+  border: var(--border-hairline-width) solid var(--action-secondary-border);
+}

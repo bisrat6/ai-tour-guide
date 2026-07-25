@@ -1,0 +1,98 @@
+.region {
+  position: fixed;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--space-2);
+  pointer-events: none;
+  max-inline-size: min(24rem, calc(100vw - var(--space-4)));
+}
+
+.bottomEnd {
+  inset-block-end: var(--space-4);
+  inset-inline-end: var(--space-4);
+}
+
+.dock {
+  inset-block-end: var(--space-4);
+  inset-inline: var(--space-4);
+  margin-inline: auto;
+}
+
+.toast {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3) var(--space-3);
+  background-color: var(--toast-surface);
+  border: var(--border-hairline-width) solid var(--toast-border);
+  border-radius: var(--toast-radius);
+  box-shadow: var(--toast-shadow);
+  pointer-events: auto;
+  animation: toastIn var(--motion-inline) var(--motion-ease);
+}
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  margin-block-start: var(--space-0-5);
+}
+
+.markSuccess {
+  color: var(--toast-mark-success);
+}
+
+.markDanger {
+  color: var(--toast-mark-danger);
+}
+
+.markNeutral {
+  color: var(--toast-mark-neutral);
+}
+
+.content {
+  display: grid;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.message {
+  margin: 0;
+  color: var(--toast-text);
+}
+
+.detail {
+  margin: 0;
+  color: var(--content-secondary);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-block-start: var(--space-2);
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (max-width: 48rem) {
+  .bottomEnd {
+    inset-inline: var(--space-4);
+    inset-inline-end: auto;
+  }
+}

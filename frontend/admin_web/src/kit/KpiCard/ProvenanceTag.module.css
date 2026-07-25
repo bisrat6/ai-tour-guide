@@ -1,0 +1,14 @@
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding-inline: var(--space-2);
+  padding-block: var(--space-0-5);
+  border-radius: var(--badge-radius);
+  background-color: var(--kpi-provenance-tint);
+  color: var(--kpi-provenance-text);
+}
+
+.label {
+  margin: 0;
+}

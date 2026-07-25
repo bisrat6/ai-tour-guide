@@ -1,0 +1,79 @@
+.page {
+  padding: var(--space-2);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.headerCard {
+  border-radius: var(--radius-surface);
+  border: var(--border-hairline-width) solid var(--panel-border);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+  padding: var(--space-3);
+}
+
+.layout {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.rail {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.railList {
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.railLink {
+  min-height: var(--target-min);
+  border-radius: var(--radius-control);
+  border: var(--border-hairline-width) solid var(--border-hairline);
+  background: var(--surface-raised);
+  color: var(--content-primary);
+  padding: var(--space-1);
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.railLink:hover {
+  border-color: var(--border-control);
+}
+
+.railLinkActive {
+  border-color: var(--accent-fill);
+  color: var(--content-primary);
+  box-shadow: inset 2px 0 0 var(--accent-fill);
+}
+
+.formPanel {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.formGrid {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.rowActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.muted {
+  color: var(--content-secondary);
+}
+
+@media (max-width: 1023px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}

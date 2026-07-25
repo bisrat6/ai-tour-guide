@@ -1,0 +1,227 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background-color: var(--table-surface);
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+.table {
+  inline-size: 100%;
+  border-collapse: collapse;
+}
+
+.headerCell {
+  position: relative;
+  padding-block: var(--space-1);
+  padding-inline: var(--space-2);
+  background-color: var(--table-header-surface);
+  color: var(--table-header-text);
+  border-block-end: var(--border-hairline-width) solid var(--table-hairline);
+  text-align: start;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.headerCellSticky {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+}
+
+.headerCellNumeric {
+  text-align: end;
+}
+
+.selectCell,
+.selectHeader {
+  inline-size: var(--target-min);
+  padding-inline: 0;
+  text-align: center;
+}
+
+.row {
+  min-block-size: var(--table-row-min-height);
+}
+
+.row td,
+.row th {
+  position: relative;
+  min-block-size: var(--table-row-min-height);
+  padding-block: var(--space-1);
+  padding-inline: var(--space-2);
+  color: var(--table-cell-text);
+  border-block-end: var(--border-hairline-width) solid var(--table-hairline);
+  text-align: start;
+  vertical-align: middle;
+}
+
+.densityCompact td,
+.densityCompact th,
+.densityCompact .headerCell {
+  padding-block: var(--space-0-5);
+}
+
+.row:hover:not(.rowSelected):not(.rowActive) td,
+.row:hover:not(.rowSelected):not(.rowActive) th {
+  background-color: var(--table-row-hover);
+}
+
+.rowSelected td,
+.rowSelected th {
+  background-color: var(--table-row-selected);
+}
+
+.rowActive:not(.rowSelected) td,
+.rowActive:not(.rowSelected) th {
+  background-color: var(--table-row-hover);
+}
+
+.rowSelected td:first-child::before,
+.rowActive td:first-child::before,
+.rowSelected th:first-child::before,
+.rowActive th:first-child::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: 2px;
+  background-color: var(--table-selection-bar);
+}
+
+.cellNumeric {
+  text-align: end;
+}
+
+.cellMuted {
+  color: var(--table-cell-text-muted);
+}
+
+.rowActivate {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: var(--target-min);
+  padding-inline: var(--space-1);
+  margin-inline: calc(var(--space-1) * -1);
+  color: inherit;
+  border-radius: var(--radius-control);
+  text-align: start;
+  font: inherit;
+}
+
+.rowActivate:hover {
+  text-decoration: underline;
+}
+
+.bodyMessage {
+  padding-block: var(--space-4);
+  padding-inline: var(--space-2);
+}
+
+.hideBelow768,
+.hideBelow1024,
+.hideBelow1280 {
+  /* shown by default; media queries hide */
+}
+
+@media (max-width: 767px) {
+  .hideBelow768 {
+    display: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  .hideBelow1024 {
+    display: none;
+  }
+}
+
+@media (max-width: 1279px) {
+  .hideBelow1280 {
+    display: none;
+  }
+}
+
+/* ColumnHeaderButton */
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  inline-size: 100%;
+  min-block-size: var(--target-min);
+  padding-inline: 0;
+  color: inherit;
+  border-radius: var(--radius-control);
+  text-align: start;
+}
+
+.sortIcon {
+  display: inline-flex;
+  color: var(--table-sort-icon);
+  flex-shrink: 0;
+}
+
+.sortIconActive {
+  color: var(--table-sort-icon-active);
+}
+
+/* TableToolbar */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.toolbarSearch {
+  flex: 1 1 16rem;
+  min-inline-size: 12rem;
+}
+
+.toolbarFilters {
+  flex: 1 1 100%;
+}
+
+.toolbarActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-inline-start: auto;
+}
+
+.toolbarSummary {
+  color: var(--table-cell-text-muted);
+  flex: 1 1 100%;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.paginationSummary {
+  color: var(--table-cell-text-muted);
+}
+
+.paginationControls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.pageLive {
+  color: var(--table-cell-text-muted);
+}
+
+/* Skeleton rows */
+.skeletonCell {
+  display: block;
+  min-inline-size: 4rem;
+}
