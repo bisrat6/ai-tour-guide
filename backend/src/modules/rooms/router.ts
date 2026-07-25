@@ -70,7 +70,7 @@ roomsRouter.delete(
   asyncHandler(async (req, res) => {
     if (!req.admin) throw ApiError.unauthenticated();
     const query = deleteRoomQuerySchema.parse(req.query);
-    await deleteRoom(requireParam(req, 'id'), { force: query.force ?? false }, req.admin.id);
+    await deleteRoom(requireParam(req, 'id'), { force: query.force }, req.admin.id);
     res.status(204).send();
   }),
 );

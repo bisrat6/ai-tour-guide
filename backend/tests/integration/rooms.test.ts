@@ -380,6 +380,48 @@ describe('D1-5 rooms', () => {
       expect(orphanedItem).toBeNull();
     });
 
+    it('treats force=false as "do not force", and rejects any other value', async () => {
+      // Regression: force was parsed with z.coerce.boolean(), i.e.
+      // Boolean('false') === true, so ?force=false silently force-deleted —
+      // the opposite of what the caller asked for.
+      const { museum: adwa, token: adwaToken } = await seedMuseumWithAdmin({
+        name: 'Adwa',
+        slug: 'adwa',
+        email: 'admin@adwa.test',
+      });
+      const target = await seedRoom({
+        museumId: adwa.id,
+        legacyId: 'room_2',
+        storyOrder: 2,
+        title: 'Target',
+      });
+      const referencing = await seedRoom({
+        museumId: adwa.id,
+        legacyId: 'room_1',
+        storyOrder: 1,
+        title: 'Referencing',
+        nextRoomId: target.id,
+      });
+
+      for (const force of ['false', 'False', '0', 'no']) {
+        const res = await request(app)
+          .delete(`/admin/rooms/${target.id}`)
+          .query({ force })
+          .set(authHeader(adwaToken));
+
+        // 'false' is honoured as a refusal; the rest are rejected outright
+        // rather than guessed at, because guessing wrong destroys data.
+        const expected = force === 'false' ? 409 : 400;
+        expect(res.status, `force=${force}`).toBe(expected);
+        expect(res.body.error.code).toBe(expected === 409 ? 'ROOM_REFERENCED' : 'VALIDATION_ERROR');
+      }
+
+      // Nothing was deleted and no pointer was nulled by any of the above.
+      expect(await prisma.room.findUnique({ where: { id: target.id } })).not.toBeNull();
+      const stillPointing = await prisma.room.findUniqueOrThrow({ where: { id: referencing.id } });
+      expect(stillPointing.nextRoomId).toBe(target.id);
+    });
+
     it('returns 403 for a cross-tenant delete and 404 for a missing room', async () => {
       const { token: adwaToken } = await seedMuseumWithAdmin({
         name: 'Adwa',

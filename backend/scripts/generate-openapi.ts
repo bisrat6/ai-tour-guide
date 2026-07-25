@@ -13,6 +13,7 @@ import { stringify } from 'yaml';
 import { z } from 'zod';
 
 import { errorEnvelopeSchema } from '../src/shared/errorEnvelope.js';
+import { healthResponseSchema } from '../src/modules/health/schemas.js';
 import { loginRequestSchema, loginResponseSchema } from '../src/modules/auth/schemas.js';
 import {
   addMuseumAdminRequestSchema,
@@ -65,8 +66,10 @@ function errorResponses(...statuses: number[]) {
     403: 'Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).',
     404: 'Resource does not exist.',
     409: 'Unique constraint conflict, or a room delete blocked by a reference (CONFLICT / ROOM_REFERENCED).',
+    413: 'Request body exceeds the 100kb cap (VALIDATION_ERROR).',
     422: 'nextRoomId crosses museums or forms a cycle (INVALID_ROOM_SEQUENCE).',
     429: 'Rate limited (RATE_LIMITED).',
+    503: 'A dependency is unreachable (UPSTREAM_UNAVAILABLE).',
   };
   for (const status of statuses) {
     responses[status] = {
@@ -76,6 +79,24 @@ function errorResponses(...statuses: number[]) {
   }
   return responses;
 }
+
+// --- Health (D1-1) ------------------------------------------------------
+
+registry.registerPath({
+  method: 'get',
+  path: '/health',
+  tags: ['Health'],
+  summary: 'Liveness and database reachability',
+  description:
+    'Unauthenticated. Performs a real SELECT 1, so a deployment with a broken connection string fails its health check instead of serving 500s on every other route.',
+  responses: {
+    200: {
+      description: 'Service is up and the database answered.',
+      content: { 'application/json': { schema: healthResponseSchema } },
+    },
+    ...errorResponses(503),
+  },
+});
 
 // --- Auth (§8) --------------------------------------------------------
 
@@ -92,7 +113,7 @@ registry.registerPath({
       description: 'Login succeeded.',
       content: { 'application/json': { schema: loginResponseSchema } },
     },
-    ...errorResponses(400, 401, 429),
+    ...errorResponses(400, 401, 413, 429),
   },
 });
 
@@ -144,7 +165,7 @@ registry.registerPath({
       description: 'Museum and admin created in one transaction.',
       content: { 'application/json': { schema: createMuseumResponseSchema } },
     },
-    ...errorResponses(400, 401, 403, 409),
+    ...errorResponses(400, 401, 403, 409, 413),
   },
 });
 
@@ -164,7 +185,7 @@ registry.registerPath({
       description: 'Updated museum.',
       content: { 'application/json': { schema: museumSchema } },
     },
-    ...errorResponses(400, 401, 403, 404),
+    ...errorResponses(400, 401, 403, 404, 413),
   },
 });
 
@@ -183,7 +204,7 @@ registry.registerPath({
       description: 'Admin created.',
       content: { 'application/json': { schema: adminUserSchema } },
     },
-    ...errorResponses(400, 401, 403, 404, 409),
+    ...errorResponses(400, 401, 403, 404, 409, 413),
   },
 });
 
@@ -235,7 +256,7 @@ registry.registerPath({
       description: 'Room created.',
       content: { 'application/json': { schema: roomSchema } },
     },
-    ...errorResponses(400, 401, 403, 409, 422),
+    ...errorResponses(400, 401, 403, 409, 413, 422),
   },
 });
 
@@ -254,7 +275,7 @@ registry.registerPath({
       description: 'Updated room.',
       content: { 'application/json': { schema: roomSchema } },
     },
-    ...errorResponses(400, 401, 403, 404, 409, 422),
+    ...errorResponses(400, 401, 403, 404, 409, 413, 422),
   },
 });
 
@@ -267,7 +288,9 @@ registry.registerPath({
   request: { params: idParam, query: deleteRoomQuerySchema },
   responses: {
     204: { description: 'Room deleted.' },
-    ...errorResponses(401, 403, 404, 409),
+    // 400: force must be exactly "true" or "false" — anything else is
+    // rejected rather than guessed at, since guessing wrong deletes data.
+    ...errorResponses(400, 401, 403, 404, 409),
   },
 });
 
@@ -283,7 +306,7 @@ registry.registerPath({
   },
   responses: {
     200: { description: 'Items reordered.' },
-    ...errorResponses(400, 401, 403, 404),
+    ...errorResponses(400, 401, 403, 404, 413),
   },
 });
 
@@ -301,7 +324,9 @@ registry.registerPath({
       description: 'Paginated list of items.',
       content: { 'application/json': { schema: listItemsResponseSchema } },
     },
-    ...errorResponses(400, 401, 403),
+    // 404: the room named by ?roomId must be loaded before scope can be
+    // checked against it, so an unknown roomId is an absence, not a 400.
+    ...errorResponses(400, 401, 403, 404),
   },
 });
 
@@ -319,7 +344,7 @@ registry.registerPath({
       description: 'Item created.',
       content: { 'application/json': { schema: itemSchema } },
     },
-    ...errorResponses(400, 401, 403, 404),
+    ...errorResponses(400, 401, 403, 404, 413),
   },
 });
 
@@ -338,7 +363,7 @@ registry.registerPath({
       description: 'Updated item.',
       content: { 'application/json': { schema: itemSchema } },
     },
-    ...errorResponses(400, 401, 403, 404),
+    ...errorResponses(400, 401, 403, 404, 413),
   },
 });
 
@@ -365,7 +390,7 @@ const document = generator.generateDocument({
     version: '0.1.0',
     title: 'Adwa AI Tour Guide — Admin API',
     description:
-      'Developer 1\u2019s admin surface (auth, museums, rooms, items). Generated from Zod schemas — do not hand-edit. See docs/backend-implementation-plan.md and developer1-detailed-plan.md.',
+      'Developer 1\u2019s admin surface (auth, museums, rooms, items). Generated from Zod schemas — do not hand-edit. Every JSON request body is capped at 100kb globally; routes that accept a body therefore declare 413. See docs/backend-implementation-plan.md and developer1-detailed-plan.md.',
   },
   servers: [{ url: '/', description: 'Relative to wherever the API is deployed' }],
 });

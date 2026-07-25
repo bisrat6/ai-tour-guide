@@ -276,7 +276,7 @@ describe('D1-6 items', () => {
   });
 
   describe('PATCH /admin/rooms/:id/items/order', () => {
-    it('reorders items atomically', async () => {
+    it('reorders items atomically and purges the room\u2019s cached answers', async () => {
       const { museum: adwa, token: adwaToken } = await seedMuseumWithAdmin({
         name: 'Adwa',
         slug: 'adwa',
@@ -291,6 +291,7 @@ describe('D1-6 items', () => {
       const first = await seedItem({ roomId: room.id, name: 'First', displayOrder: 0 });
       const second = await seedItem({ roomId: room.id, name: 'Second', displayOrder: 1 });
       const third = await seedItem({ roomId: room.id, name: 'Third', displayOrder: 2 });
+      await seedChatAnswer({ roomId: room.id, questionHash: 'hash-1' });
 
       const res = await request(app)
         .patch(`/admin/rooms/${room.id}/items/order`)
@@ -305,6 +306,11 @@ describe('D1-6 items', () => {
       });
       expect(reordered.map((i) => i.id)).toEqual([third.id, first.id, second.id]);
       expect(reordered.map((i) => i.displayOrder)).toEqual([0, 1, 2]);
+
+      // §10.3 builds the chat prompt from the displayOrder-ordered item list,
+      // so a reorder changes the prompt and any cached answer is now stale.
+      const remaining = await prisma.chatAnswer.count({ where: { roomId: room.id } });
+      expect(remaining).toBe(0);
     });
 
     it('rejects a set of itemIds that does not exactly match the room\u2019s items', async () => {

@@ -3,8 +3,9 @@ info:
   version: 0.1.0
   title: Adwa AI Tour Guide — Admin API
   description: Developer 1’s admin surface (auth, museums, rooms, items).
-    Generated from Zod schemas — do not hand-edit. See
-    docs/backend-implementation-plan.md and developer1-detailed-plan.md.
+    Generated from Zod schemas — do not hand-edit. Every JSON request body is
+    capped at 100kb globally; routes that accept a body therefore declare 413.
+    See docs/backend-implementation-plan.md and developer1-detailed-plan.md.
 servers:
   - url: /
     description: Relative to wherever the API is deployed
@@ -16,32 +17,26 @@ components:
       bearerFormat: JWT
       description: Admin JWT from POST /admin/login. See §8.
   schemas:
-    LoginResponse:
+    HealthResponse:
       type: object
       properties:
-        token:
+        status:
           type: string
-          description: JWT, 12-hour expiry.
-        role:
-          $ref: "#/components/schemas/AdminRole"
-        museumId:
-          type:
-            - string
-            - "null"
-          description: null for SYSTEM_ADMIN.
-        expiresAt:
+          enum:
+            - ok
+        dbLatencyMs:
+          type: integer
+          minimum: 0
+          description: Round-trip time of a real SELECT 1 against Postgres.
+          example: 3
+        version:
           type: string
-          format: date-time
+          description: Value of version in package.json.
+          example: 0.1.0
       required:
-        - token
-        - role
-        - museumId
-        - expiresAt
-    AdminRole:
-      type: string
-      enum:
-        - SYSTEM_ADMIN
-        - MUSEUM_ADMIN
+        - status
+        - dbLatencyMs
+        - version
     ErrorEnvelope:
       type: object
       properties:
@@ -93,6 +88,32 @@ components:
         - UPSTREAM_FAILURE
         - UPSTREAM_UNAVAILABLE
       description: Machine-readable error code. See §7.2 of the backend implementation plan.
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT, 12-hour expiry.
+        role:
+          $ref: "#/components/schemas/AdminRole"
+        museumId:
+          type:
+            - string
+            - "null"
+          description: null for SYSTEM_ADMIN.
+        expiresAt:
+          type: string
+          format: date-time
+      required:
+        - token
+        - role
+        - museumId
+        - expiresAt
+    AdminRole:
+      type: string
+      enum:
+        - SYSTEM_ADMIN
+        - MUSEUM_ADMIN
     LoginRequest:
       type: object
       properties:
@@ -566,6 +587,27 @@ components:
           minimum: 0
   parameters: {}
 paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Liveness and database reachability
+      description: Unauthenticated. Performs a real SELECT 1, so a deployment with a
+        broken connection string fails its health check instead of serving 500s
+        on every other route.
+      responses:
+        "200":
+          description: Service is up and the database answered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: A dependency is unreachable (UPSTREAM_UNAVAILABLE).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /admin/login:
     post:
       tags:
@@ -592,6 +634,12 @@ paths:
         "401":
           description: Missing, invalid, or expired token (UNAUTHENTICATED /
             INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Request body exceeds the 100kb cap (VALIDATION_ERROR).
           content:
             application/json:
               schema:
@@ -691,6 +739,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Request body exceeds the 100kb cap (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /admin/museums/{id}:
     get:
       tags:
@@ -782,6 +836,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Request body exceeds the 100kb cap (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /admin/museums/{id}/admins:
     post:
       tags:
@@ -836,6 +896,12 @@ paths:
         "409":
           description: Unique constraint conflict, or a room delete blocked by a reference
             (CONFLICT / ROOM_REFERENCED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Request body exceeds the 100kb cap (VALIDATION_ERROR).
           content:
             application/json:
               schema:
@@ -945,6 +1011,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Request body exceeds the 100kb cap (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "422":
           description: nextRoomId crosses museums or forms a cycle (INVALID_ROOM_SEQUENCE).
           content:
@@ -1048,6 +1120,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Request body exceeds the 100kb cap (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "422":
           description: nextRoomId crosses museums or forms a cycle (INVALID_ROOM_SEQUENCE).
           content:
@@ -1068,19 +1146,26 @@ paths:
           name: id
           in: path
         - schema:
-            type:
-              - boolean
-              - "null"
+            type: string
+            enum:
+              - "true"
+              - "false"
             description: Null out other rooms’ nextRoomId instead of returning 409
-              ROOM_REFERENCED.
+              ROOM_REFERENCED. Must be exactly "true" or "false".
           required: false
           description: Null out other rooms’ nextRoomId instead of returning 409
-            ROOM_REFERENCED.
+            ROOM_REFERENCED. Must be exactly "true" or "false".
           name: force
           in: query
       responses:
         "204":
           description: Room deleted.
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           description: Missing, invalid, or expired token (UNAUTHENTICATED /
             INVALID_CREDENTIALS).
@@ -1154,6 +1239,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Request body exceeds the 100kb cap (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /admin/items:
     get:
       tags:
@@ -1211,6 +1302,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     post:
       tags:
         - Items
@@ -1250,6 +1347,12 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Request body exceeds the 100kb cap (VALIDATION_ERROR).
           content:
             application/json:
               schema:
@@ -1301,6 +1404,12 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Request body exceeds the 100kb cap (VALIDATION_ERROR).
           content:
             application/json:
               schema:

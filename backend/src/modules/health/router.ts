@@ -3,6 +3,7 @@ import { asyncHandler } from '../../lib/asyncHandler.js';
 import { ApiError } from '../../lib/errors.js';
 import { appVersion } from '../../lib/version.js';
 import { prisma } from '../../lib/prisma.js';
+import type { HealthResponse } from './schemas.js';
 
 export const healthRouter = Router();
 
@@ -22,6 +23,7 @@ healthRouter.get(
       throw ApiError.upstreamUnavailable('Database is unreachable.');
     }
     const dbLatencyMs = Math.round(performance.now() - start);
-    res.json({ status: 'ok', dbLatencyMs, version: appVersion });
+    const body: HealthResponse = { status: 'ok', dbLatencyMs, version: appVersion };
+    res.json(body);
   }),
 );

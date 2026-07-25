@@ -30,7 +30,11 @@ jobs:
 
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://tourguide:tourguide_dev_password@localhost:5432/ai_tour_guide_test
+      # These must name DIFFERENT databases: the integration suite TRUNCATEs
+      # every table in TEST_DATABASE_URL between tests, and tests/setup/testEnv.ts
+      # refuses to run if the two are equal. Only TEST_DATABASE_URL is actually
+      # used here; DATABASE_URL exists because config/env.ts requires it to boot.
+      DATABASE_URL: postgresql://tourguide:tourguide_dev_password@localhost:5432/ai_tour_guide
       TEST_DATABASE_URL: postgresql://tourguide:tourguide_dev_password@localhost:5432/ai_tour_guide_test
       JWT_SECRET: ci-only-secret-do-not-use-in-prod-32chars
       JWT_EXPIRES_IN: 12h
@@ -56,11 +60,16 @@ jobs:
       - name: Format check
         run: npm run format
 
-      - name: Generate OpenAPI doc (fails the build if it doesn't run cleanly)
+      - name: Generate OpenAPI doc
         run: npm run generate:openapi
 
-      - name: Apply migrations to the test database
-        run: npx prisma migrate deploy
+      # Regenerating alone proves nothing: a Zod change without a regenerate
+      # would leave the committed contract silently stale. This fails the build
+      # if openapi/openapi.yaml no longer matches the schemas it comes from.
+      - name: Fail if the committed OpenAPI doc is stale
+        run: git diff --exit-code -- openapi/openapi.yaml
 
+      # No separate migrate step: tests/helpers/db.ts ensureTestSchema() runs
+      # `prisma migrate deploy` itself against TEST_DATABASE_URL.
       - name: Test
         run: npm run test

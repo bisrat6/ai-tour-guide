@@ -207,6 +207,11 @@ export async function reorderRoomItems(
       itemIds.map((id, index) => tx.item.update({ where: { id }, data: { displayOrder: index } })),
     );
 
+    // §14.4 purge-on-write, same as create/update/delete: §10.3 builds the
+    // chat prompt from the displayOrder-ordered item list, so reordering
+    // changes the prompt and any answer cached against the old order is stale.
+    await tx.chatAnswer.deleteMany({ where: { roomId } });
+
     await writeAuditLog(tx, {
       adminUserId: admin.id,
       museumId: room.museumId,

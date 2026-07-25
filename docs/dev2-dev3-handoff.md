@@ -74,10 +74,10 @@ just need to know it exists so you don't fight it or reimplement it:
 
 - `backend/src/modules/rooms/service.ts` — `updateRoom()` deletes `ChatAnswer` for the room inside
   the same transaction as the update. (`deleteRoom()` doesn't need to — cascade handles it.)
-- `backend/src/modules/items/service.ts` — `createItem()`, `updateItem()`, and `deleteItem()` all
-  delete `ChatAnswer` for the item's parent room inside their transaction. `reorderRoomItems()`
-  deliberately does **not** purge — it only changes `displayOrder`, which chat answers aren't
-  grounded in, so purging there would just waste cache for no correctness benefit.
+- `backend/src/modules/items/service.ts` — `createItem()`, `updateItem()`, `deleteItem()`, and
+  `reorderRoomItems()` all delete `ChatAnswer` for the item's parent room inside their transaction.
+  Reordering counts because §10.3 assembles the chat prompt from the `displayOrder`-ordered item
+  list, so changing the order changes the prompt.
 
 What this means for you:
 

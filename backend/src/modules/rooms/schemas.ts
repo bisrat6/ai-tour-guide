@@ -65,12 +65,20 @@ export const updateRoomRequestSchema = z
   })
   .meta({ id: 'UpdateRoomRequest' });
 
+// Parsed as an explicit enum rather than z.coerce.boolean(): every query
+// value arrives as a string, and Boolean('false') is true — so coercion would
+// make ?force=false destroy sequence links, which is the opposite of what the
+// caller asked for. An unrecognised value is now a 400 rather than a silent yes.
 export const deleteRoomQuerySchema = z
   .object({
-    force: z.coerce.boolean().optional().meta({
-      description:
-        'Null out other rooms\u2019 nextRoomId instead of returning 409 ROOM_REFERENCED.',
-    }),
+    force: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((value) => value === 'true')
+      .meta({
+        description:
+          'Null out other rooms\u2019 nextRoomId instead of returning 409 ROOM_REFERENCED. Must be exactly "true" or "false".',
+      }),
   })
   .meta({ id: 'DeleteRoomQuery' });
 
