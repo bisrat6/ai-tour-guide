@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Environment variables (contains secrets — never commit)
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Prisma
+prisma/generated/
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor/OS
+.DS_Store
+.vscode/
+.idea/
+
+# Misc
+*.pem

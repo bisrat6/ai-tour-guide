@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MuseumStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum AdminRole {
+  SYSTEM_ADMIN
+  MUSEUM_ADMIN
+}
+
+model Museum {
+  id                  String       @id @default(uuid())
+  name                String
+  slug                String       @unique
+  status              MuseumStatus @default(ACTIVE)
+  ticketValidationUrl String?      // null = no ticketing gate for this museum
+  systemPrompt        String?      @db.Text // per-museum guide persona (S2)
+  defaultVoiceId      String?      // per-museum TTS voice (S3)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  adminUsers AdminUser[]
+  rooms      Room[]
+  auditLogs  AdminAuditLog[]
+
+  @@index([status])
+}
+
+model AdminUser {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  role         AdminRole
+  museumId     String? // null for SYSTEM_ADMIN, required for MUSEUM_ADMIN
+  museum       Museum?   @relation(fields: [museumId], references: [id], onDelete: Restrict)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  auditLogs AdminAuditLog[]
+
+  @@index([museumId])
+}
+
+model Room {
+  id               String   @id @default(uuid()) // globally unique — a QR code encodes this
+  legacyId         String? // original id from data/*.json (S9)
+  museumId         String
+  museum           Museum   @relation(fields: [museumId], references: [id], onDelete: Restrict)
+  storyOrder       Int
+  title            String
+  roomOverviewText String   @db.Text // grounding prose for chat
+  narrationScript  String   @db.Text // spoken script sent to TTS (S1)
+  roomAudioUrl     String? // pre-generated narration audio
+  nextRoomId       String?
+  nextRoom         Room?    @relation("RoomSequence", fields: [nextRoomId], references: [id], onDelete: SetNull)
+  previousRooms    Room[]   @relation("RoomSequence")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  items       Item[]
+  chatAnswers ChatAnswer[]
+
+  @@unique([museumId, storyOrder]) // (S4)
+  @@unique([museumId, legacyId])
+  @@index([museumId])
+  @@index([nextRoomId])
+}
+
+model Item {
+  id               String   @id @default(uuid())
+  legacyId         String?
+  roomId           String
+  room             Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  name             String
+  shortDescription String
+  detailText       String   @db.Text
+  imageUrl         String?
+  displayOrder     Int      @default(0) // (S5)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  chatAnswers ChatAnswer[]
+
+  @@unique([roomId, legacyId])
+  @@index([roomId, displayOrder])
+}
+
+// Deduplicates TTS output. Key is a hash of the exact synthesis inputs,
+// so identical text in the same voice is only ever paid for once.
+model AudioAsset {
+  id          String   @id @default(uuid())
+  contentHash String   @unique
+  url         String
+  voiceId     String
+  model       String
+  durationMs  Int?
+  byteSize    Int?
+  createdAt   DateTime @default(now())
+}
+
+// Serves two purposes: the answer cache, and the durable handle behind
+// the audioUrl returned by POST /chat (C1).
+model ChatAnswer {
+  id           String   @id @default(uuid())
+  roomId       String
+  room         Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  itemId       String?
+  item         Item?    @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  questionHash String   @unique // sha256(roomId : itemId : normalizedQuestion)
+  question     String   @db.Text
+  answer       String   @db.Text
+  audioHash    String? // -> AudioAsset.contentHash once synthesized
+  createdAt    DateTime @default(now())
+
+  @@index([roomId])
+  @@index([createdAt])
+}
+
+model AdminAuditLog {
+  id          String    @id @default(uuid())
+  adminUserId String
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  museumId    String?
+  museum      Museum?   @relation(fields: [museumId], references: [id], onDelete: SetNull)
+  action      String // CREATE | UPDATE | DELETE
+  entityType  String // Museum | Room | Item | AdminUser
+  entityId    String
+  before      Json?
+  after       Json?
+  createdAt   DateTime  @default(now())
+
+  @@index([museumId, createdAt])
+  @@index([adminUserId, createdAt])
+}
