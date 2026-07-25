@@ -4,6 +4,15 @@ import { ZodError } from 'zod';
 import { ApiError } from '../lib/errors.js';
 import { ErrorCode } from '../shared/errorEnvelope.js';
 
+function isBodyParserError(err: unknown): err is Error & { type: string } {
+  return (
+    err instanceof Error &&
+    'type' in err &&
+    typeof err.type === 'string' &&
+    (err.type === 'entity.parse.failed' || err.type === 'entity.too.large')
+  );
+}
+
 /**
  * The single place that turns any thrown error into the §7.1 envelope.
  * Every route relies on this instead of building error responses by hand,
@@ -40,6 +49,25 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
         code: ErrorCode.VALIDATION_ERROR,
         requestId: req.requestId,
         details,
+      },
+    });
+    return;
+  }
+
+  // body-parser (express.json) reports malformed/oversized/wrong-content-type
+  // bodies as plain Errors carrying a `type` like 'entity.parse.failed' or
+  // 'entity.too.large' — client input, not a server bug, so none of these
+  // may fall through to the generic 500 below.
+  if (isBodyParserError(err)) {
+    req.log.warn({ err }, 'Malformed or oversized request body.');
+    res.status(err.type === 'entity.too.large' ? 413 : 400).json({
+      error: {
+        message:
+          err.type === 'entity.too.large'
+            ? 'Request body is too large.'
+            : 'Request body is not valid JSON.',
+        code: ErrorCode.VALIDATION_ERROR,
+        requestId: req.requestId,
       },
     });
     return;

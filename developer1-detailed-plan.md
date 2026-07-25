@@ -296,7 +296,7 @@ Acceptance criteria:
 
 ### D1-7 — Isolation test suite
 
-**Status:** Not started
+**Status:** Done
 
 Goal: turn the tenant guarantee into something CI enforces rather than something a person remembers to check.
 
@@ -312,7 +312,7 @@ Exit criteria: all twelve cases pass, and each one has been confirmed to fail wh
 
 ### D1-8 — Handoff and hardening
 
-**Status:** Not started
+**Status:** Done
 
 Goal: hand Developers 2 and 3 a stable base.
 
