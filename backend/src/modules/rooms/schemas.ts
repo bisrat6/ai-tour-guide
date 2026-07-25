@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { itemSchema } from '../items/schemas.js';
 import { paginatedResponseSchema, paginationQuerySchema } from '../../shared/pagination.js';
 
 /**
@@ -23,6 +24,12 @@ export const roomSchema = z
     updatedAt: z.iso.datetime(),
   })
   .meta({ id: 'Room' });
+
+// §14.2: GET /admin/rooms/:id "includes items" — a distinct response shape
+// from the plain Room used everywhere else, so the paginated list stays cheap.
+export const roomWithItemsSchema = roomSchema
+  .extend({ items: z.array(itemSchema) })
+  .meta({ id: 'RoomWithItems' });
 
 export const listRoomsQuerySchema = paginationQuerySchema.extend({
   museumId: z.uuid().optional().meta({
@@ -74,5 +81,7 @@ export const reorderItemsRequestSchema = z
   .meta({ id: 'ReorderItemsRequest' });
 
 export type Room = z.infer<typeof roomSchema>;
+export type RoomWithItems = z.infer<typeof roomWithItemsSchema>;
 export type CreateRoomRequest = z.infer<typeof createRoomRequestSchema>;
 export type UpdateRoomRequest = z.infer<typeof updateRoomRequestSchema>;
+export type DeleteRoomQuery = z.infer<typeof deleteRoomQuerySchema>;

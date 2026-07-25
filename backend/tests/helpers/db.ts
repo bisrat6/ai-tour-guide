@@ -83,6 +83,7 @@ export async function seedRoom(opts: {
   legacyId: string;
   storyOrder: number;
   title: string;
+  nextRoomId?: string | null;
 }) {
   return prisma.room.create({
     data: {
@@ -92,6 +93,36 @@ export async function seedRoom(opts: {
       title: opts.title,
       roomOverviewText: `${opts.title} overview`,
       narrationScript: `${opts.title} narration`,
+      nextRoomId: opts.nextRoomId ?? null,
+    },
+  });
+}
+
+export async function seedItem(opts: {
+  roomId: string;
+  legacyId?: string;
+  name: string;
+  displayOrder?: number;
+}) {
+  return prisma.item.create({
+    data: {
+      roomId: opts.roomId,
+      legacyId: opts.legacyId ?? null,
+      name: opts.name,
+      shortDescription: `${opts.name} short description`,
+      detailText: `${opts.name} detail text`,
+      displayOrder: opts.displayOrder ?? 0,
+    },
+  });
+}
+
+export async function seedChatAnswer(opts: { roomId: string; questionHash: string }) {
+  return prisma.chatAnswer.create({
+    data: {
+      roomId: opts.roomId,
+      questionHash: opts.questionHash,
+      question: 'What is this room about?',
+      answer: 'A cached answer.',
     },
   });
 }

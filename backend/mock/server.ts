@@ -330,7 +330,10 @@ app.get('/admin/rooms/:id', requireAuth, (req: Request, res: Response) => {
   const room = store.rooms.find((r) => r.id === req.params.id);
   if (!room) return sendError(res, 404, ErrorCode.NOT_FOUND, 'Room not found.');
   if (!assertMuseumScope(req, res, room.museumId)) return;
-  res.json(room);
+  const items = store.items
+    .filter((i) => i.roomId === room.id)
+    .sort((a, b) => a.displayOrder - b.displayOrder);
+  res.json({ ...room, items });
 });
 
 app.post('/admin/rooms', requireAuth, (req: Request, res: Response) => {

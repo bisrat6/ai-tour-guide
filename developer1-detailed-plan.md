@@ -248,7 +248,7 @@ Acceptance criteria:
 
 ### D1-5 — Rooms
 
-**Status:** Not started
+**Status:** Done
 
 Goal: museum admins can manage their tour's rooms without being able to touch anyone else's.
 

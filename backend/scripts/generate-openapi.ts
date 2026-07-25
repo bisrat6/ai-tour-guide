@@ -31,6 +31,7 @@ import {
   listRoomsResponseSchema,
   reorderItemsRequestSchema,
   roomSchema,
+  roomWithItemsSchema,
   updateRoomRequestSchema,
 } from '../src/modules/rooms/schemas.js';
 import {
@@ -213,8 +214,8 @@ registry.registerPath({
   request: { params: idParam },
   responses: {
     200: {
-      description: 'The room.',
-      content: { 'application/json': { schema: roomSchema } },
+      description: 'The room, with its items.',
+      content: { 'application/json': { schema: roomWithItemsSchema } },
     },
     ...errorResponses(401, 403, 404),
   },

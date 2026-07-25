@@ -7,13 +7,14 @@ for the full specification and
 [developer1-detailed-plan.md](../developer1-detailed-plan.md) for how the
 admin foundation (this package, so far) is being built phase by phase.
 
-**Status:** D1-4 — Museums. Real Express app, Postgres via Prisma, seeded
+**Status:** D1-5 — Rooms. Real Express app, Postgres via Prisma, seeded
 museum content, `POST /admin/login`, JWT auth, the `requireAuth` /
-`requireRole` / `requireMuseumScope` middlewares, and the full museum CRUD
-surface (`GET/POST /admin/museums`, `GET/PATCH /admin/museums/:id`,
-`POST /admin/museums/:id/admins`) with transactional writes and audit
-logging. The D1-0 mock server remains available for clients that prefer the
-in-memory contract.
+`requireRole` / `requireMuseumScope` middlewares, the full museum CRUD
+surface, and the room CRUD surface (`GET/POST /admin/rooms`,
+`GET/PATCH/DELETE /admin/rooms/:id`) with same-museum and cycle validation on
+`nextRoomId`, referenced-room delete protection, chat-answer cache purging,
+and audit logging. The D1-0 mock server remains available for clients that
+prefer the in-memory contract.
 
 ## Quick start
 

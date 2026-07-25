@@ -340,6 +340,108 @@ components:
         - nextRoomId
         - createdAt
         - updatedAt
+    RoomWithItems:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        legacyId:
+          type:
+            - string
+            - "null"
+          description: Original id from data/*.json, see §16.1.
+        museumId:
+          type: string
+          format: uuid
+        storyOrder:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+        roomOverviewText:
+          type: string
+          description: Grounding prose for chat.
+        narrationScript:
+          type: string
+          description: Spoken script sent to TTS.
+        roomAudioUrl:
+          type:
+            - string
+            - "null"
+          format: uri
+        nextRoomId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Item"
+      required:
+        - id
+        - legacyId
+        - museumId
+        - storyOrder
+        - title
+        - roomOverviewText
+        - narrationScript
+        - roomAudioUrl
+        - nextRoomId
+        - createdAt
+        - updatedAt
+        - items
+    Item:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        legacyId:
+          type:
+            - string
+            - "null"
+        roomId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        shortDescription:
+          type: string
+        detailText:
+          type: string
+        imageUrl:
+          type:
+            - string
+            - "null"
+          format: uri
+        displayOrder:
+          type: integer
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - legacyId
+        - roomId
+        - name
+        - shortDescription
+        - detailText
+        - imageUrl
+        - displayOrder
+        - createdAt
+        - updatedAt
     CreateRoomRequest:
       type: object
       properties:
@@ -414,50 +516,6 @@ components:
       required:
         - data
         - nextCursor
-    Item:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        legacyId:
-          type:
-            - string
-            - "null"
-        roomId:
-          type: string
-          format: uuid
-        name:
-          type: string
-        shortDescription:
-          type: string
-        detailText:
-          type: string
-        imageUrl:
-          type:
-            - string
-            - "null"
-          format: uri
-        displayOrder:
-          type: integer
-          minimum: 0
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-      required:
-        - id
-        - legacyId
-        - roomId
-        - name
-        - shortDescription
-        - detailText
-        - imageUrl
-        - displayOrder
-        - createdAt
-        - updatedAt
     CreateItemRequest:
       type: object
       properties:
@@ -909,11 +967,11 @@ paths:
           in: path
       responses:
         "200":
-          description: The room.
+          description: The room, with its items.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Room"
+                $ref: "#/components/schemas/RoomWithItems"
         "401":
           description: Missing, invalid, or expired token (UNAUTHENTICATED /
             INVALID_CREDENTIALS).
