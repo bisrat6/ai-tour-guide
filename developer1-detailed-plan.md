@@ -225,7 +225,7 @@ Acceptance criteria:
 
 ### D1-4 — Museums
 
-**Status:** Not started
+**Status:** Done
 
 Goal: platform administrators can onboard and manage museums.
 

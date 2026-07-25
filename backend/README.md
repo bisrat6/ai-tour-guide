@@ -7,10 +7,13 @@ for the full specification and
 [developer1-detailed-plan.md](../developer1-detailed-plan.md) for how the
 admin foundation (this package, so far) is being built phase by phase.
 
-**Status:** D1-3 — Authentication. Real Express app, Postgres via Prisma,
-seeded museum content, `POST /admin/login`, JWT auth, and the
-`requireAuth` / `requireRole` / `requireMuseumScope` middlewares. The D1-0
-mock server remains available for clients that prefer the in-memory contract.
+**Status:** D1-4 — Museums. Real Express app, Postgres via Prisma, seeded
+museum content, `POST /admin/login`, JWT auth, the `requireAuth` /
+`requireRole` / `requireMuseumScope` middlewares, and the full museum CRUD
+surface (`GET/POST /admin/museums`, `GET/PATCH /admin/museums/:id`,
+`POST /admin/museums/:id/admins`) with transactional writes and audit
+logging. The D1-0 mock server remains available for clients that prefer the
+in-memory contract.
 
 ## Quick start
 
@@ -40,11 +43,11 @@ npm install
 
 Seeded accounts (passwords come from your `.env` `SEED_*` vars):
 
-| Role                  | Email                  |
-| --------------------- | ---------------------- |
+| Role                  | Email                                                 |
+| --------------------- | ----------------------------------------------------- |
 | SYSTEM_ADMIN          | `SEED_SYSTEM_ADMIN_EMAIL` (default `system@adwa.dev`) |
-| MUSEUM_ADMIN (Adwa)   | `admin@adwamuseum.org` |
-| MUSEUM_ADMIN (Louvre) | `admin@louvre.fr`      |
+| MUSEUM_ADMIN (Adwa)   | `admin@adwamuseum.org`                                |
+| MUSEUM_ADMIN (Louvre) | `admin@louvre.fr`                                     |
 
 ```bash
 curl -s -X POST http://localhost:3001/admin/login \

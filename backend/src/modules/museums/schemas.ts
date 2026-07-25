@@ -81,3 +81,4 @@ export const adminUserSchema = z
 export type Museum = z.infer<typeof museumSchema>;
 export type CreateMuseumRequest = z.infer<typeof createMuseumRequestSchema>;
 export type UpdateMuseumRequest = z.infer<typeof updateMuseumRequestSchema>;
+export type AddMuseumAdminRequest = z.infer<typeof addMuseumAdminRequestSchema>;

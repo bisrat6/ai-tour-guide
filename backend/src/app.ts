@@ -7,6 +7,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { requestId } from './middleware/requestId.js';
 import { authRouter } from './modules/auth/router.js';
 import { healthRouter } from './modules/health/router.js';
+import { museumsRouter } from './modules/museums/router.js';
 
 export function createApp(): Express {
   const app = express();
@@ -27,6 +28,7 @@ export function createApp(): Express {
 
   app.use('/health', healthRouter);
   app.use('/admin', authRouter);
+  app.use('/admin', museumsRouter);
 
   app.use((req, _res, next) => {
     next(ApiError.notFound(`No route for ${req.method} ${req.path}.`));
