@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tourguide
+      POSTGRES_PASSWORD: tourguide_dev_password
+      POSTGRES_DB: ai_tour_guide
+    ports:
+      - '5432:5432'
+    volumes:
+      - ai_tour_guide_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U tourguide -d ai_tour_guide']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ai_tour_guide_postgres_data:

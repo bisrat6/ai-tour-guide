@@ -1,0 +1,2801 @@
+{
+  "info": {
+    "_postman_id": "b7e4c1a2-4d3f-4a91-9f2e-6c8a51d0e7b3",
+    "name": "Adwa Admin API (Developer 1)",
+    "description": "End-to-end functional and tenant-isolation tests for the Developer 1 admin surface.\n\nRun the folders **in order, from the top**: later requests depend on tokens and IDs that earlier ones save. The collection is designed to be run repeatedly — every resource it creates is named with a per-run unique suffix and is deleted again in `06 Cleanup`.\n\nTwo checks run automatically on **every** request via the collection-level test script:\n\n- every response carries an `X-Request-Id` header (§7.4)\n- every response of 400 or above uses the §7.1 error envelope (`error.message`, `error.code`, `error.requestId`)\n\nSee `postman/README.md` for setup, the rate-limit caveat, and the regression guards it carries.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Runs after every request in the collection, in addition to the",
+          "// request's own tests. These are the two contract-wide guarantees",
+          "// from the plan, so asserting them per request would be 40 copies",
+          "// of the same code.",
+          "",
+          "pm.test('Contract: response carries X-Request-Id (§7.4)', function () {",
+          "  pm.response.to.have.header('X-Request-Id');",
+          "  pm.expect(pm.response.headers.get('X-Request-Id')).to.be.a('string').and.to.have.length.above(0);",
+          "});",
+          "",
+          "if (pm.response.code >= 400) {",
+          "  pm.test('Contract: error uses the §7.1 envelope', function () {",
+          "    const body = pm.response.json();",
+          "    pm.expect(body, 'top-level shape').to.have.property('error');",
+          "    pm.expect(body.error).to.have.property('message').that.is.a('string');",
+          "    pm.expect(body.error).to.have.property('code').that.is.a('string');",
+          "    pm.expect(body.error).to.have.property('requestId').that.is.a('string');",
+          "  });",
+          "",
+          "  pm.test('Contract: error.requestId matches the X-Request-Id header', function () {",
+          "    pm.expect(pm.response.json().error.requestId).to.eql(pm.response.headers.get('X-Request-Id'));",
+          "  });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "fakeUuid",
+      "value": "00000000-0000-4000-8000-000000000000",
+      "type": "string",
+      "description": "A syntactically valid UUID that is guaranteed not to exist, for 404 probes."
+    }
+  ],
+  "item": [
+    {
+      "name": "00 Health",
+      "description": "Proves the service is up and actually talking to Postgres before anything else runs. Also the only coverage `GET /health` has anywhere — the automated suite has none (see `docs/d1-audit.md`, Tier 2).\n\nThis request's pre-request script generates the per-run unique values the whole collection depends on, which is why the run must start here.",
+      "item": [
+        {
+          "name": "GET /health",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// One unique token per run, so a second run cannot collide with the",
+                  "// first on Museum.slug, AdminUser.email, or Room.storyOrder.",
+                  "const runId = Date.now().toString(36);",
+                  "pm.environment.set('qaRunId', runId);",
+                  "pm.environment.set('qaSlug', 'qa-' + runId);",
+                  "pm.environment.set('qaAdminEmail', 'qa-' + runId + '@example.test');",
+                  "pm.environment.set('qaExtraAdminEmail', 'qa-extra-' + runId + '@example.test');",
+                  "pm.environment.set('qaUnknownEmail', 'qa-nobody-' + runId + '@example.test');",
+                  "",
+                  "// storyOrder is unique per museum. Seeded rooms use 1-4; park this",
+                  "// run's rooms far above that, at a base that varies per run so a",
+                  "// crashed earlier run cannot block this one.",
+                  "const storyOrderBase = 100000 + (Date.now() % 100000);",
+                  "pm.environment.set('storyOrderA', storyOrderBase);",
+                  "pm.environment.set('storyOrderDel1', storyOrderBase + 1);",
+                  "pm.environment.set('storyOrderDel2', storyOrderBase + 2);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('status is \"ok\"', function () {",
+                  "  pm.expect(body.status).to.eql('ok');",
+                  "});",
+                  "",
+                  "pm.test('dbLatencyMs is a number — a real SELECT 1 round-trip happened', function () {",
+                  "  pm.expect(body.dbLatencyMs).to.be.a('number');",
+                  "  pm.expect(body.dbLatencyMs).to.be.at.least(0);",
+                  "});",
+                  "",
+                  "pm.test('version is reported', function () {",
+                  "  pm.expect(body.version).to.be.a('string').and.to.have.length.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Unauthenticated. Returns 200 with a measured database latency, or 503 UPSTREAM_UNAVAILABLE if Postgres is unreachable — which is what makes it usable as a deploy gate."
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Auth",
+      "description": "Logs in the two seeded accounts and saves their tokens, then works through the failure modes: indistinguishable credential errors, missing and malformed tokens, and malformed or oversized request bodies.\n\n**Rate limit note:** `POST /admin/login` is capped at 10 requests per IP per 15 minutes outside `NODE_ENV=test`. This collection spends 5 of those per run, so two back-to-back runs fit and a third will legitimately return `429 RATE_LIMITED`. Restart `npm run dev` to reset the in-memory window.",
+      "item": [
+        {
+          "name": "POST /admin/login — system admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 200) {",
+                  "  throw new Error('System admin login failed — check systemAdminEmail/systemAdminPassword in the environment. Body: ' + pm.response.text());",
+                  "}",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('systemToken', body.token);",
+                  "",
+                  "pm.test('role is SYSTEM_ADMIN', function () {",
+                  "  pm.expect(body.role).to.eql('SYSTEM_ADMIN');",
+                  "});",
+                  "",
+                  "pm.test('museumId is null — a system admin belongs to no museum', function () {",
+                  "  pm.expect(body.museumId).to.eql(null);",
+                  "});",
+                  "",
+                  "pm.test('expiresAt is ~12h out (JWT_EXPIRES_IN)', function () {",
+                  "  const hours = (new Date(body.expiresAt).getTime() - Date.now()) / 3600000;",
+                  "  pm.expect(hours).to.be.within(11, 13);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{systemAdminEmail}}\",\n  \"password\": \"{{systemAdminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "login"]
+            },
+            "description": "The seeded SYSTEM_ADMIN. Its `museumId` is null, which is what makes every museum-scoped route require an explicit `museumId` from it."
+          }
+        },
+        {
+          "name": "POST /admin/login — museum A admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 200) {",
+                  "  throw new Error('Museum admin login failed — check museumAdminEmail/museumAdminPassword, and that `npm run seed` has been run. Body: ' + pm.response.text());",
+                  "}",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('museumAToken', body.token);",
+                  "pm.environment.set('museumAId', body.museumId);",
+                  "",
+                  "pm.test('role is MUSEUM_ADMIN', function () {",
+                  "  pm.expect(body.role).to.eql('MUSEUM_ADMIN');",
+                  "});",
+                  "",
+                  "pm.test('museumId identifies the tenant this token is locked to', function () {",
+                  "  pm.expect(body.museumId).to.be.a('string').and.to.have.length.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{museumAdminEmail}}\",\n  \"password\": \"{{museumAdminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "login"]
+            },
+            "description": "The seeded MUSEUM_ADMIN for the Adwa museum. Everything in folders 03-05 uses this token as \"museum A\" and checks it can never reach museum B."
+          }
+        },
+        {
+          "name": "POST /admin/login — wrong password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 INVALID_CREDENTIALS', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('INVALID_CREDENTIALS');",
+                  "});",
+                  "",
+                  "// Saved so the next request can prove an unknown email is indistinguishable.",
+                  "if (pm.response.code === 401) {",
+                  "  pm.environment.set('invalidCredentialsMessage', pm.response.json().error.message);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{systemAdminEmail}}\",\n  \"password\": \"definitely-not-the-password\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "login"]
+            },
+            "description": "A real account with the wrong password. Uses the system admin's email deliberately: the successful login two requests earlier reset its failure counter, so this single failure can never accumulate towards the 5-failure lockout across runs."
+          }
+        },
+        {
+          "name": "POST /admin/login — unknown email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 INVALID_CREDENTIALS', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('INVALID_CREDENTIALS');",
+                  "});",
+                  "",
+                  "pm.test('§8.1: response does not reveal whether the account exists', function () {",
+                  "  pm.expect(pm.response.json().error.message).to.eql(pm.environment.get('invalidCredentialsMessage'));",
+                  "});",
+                  "",
+                  "pm.test('No details array leaks which field was wrong', function () {",
+                  "  pm.expect(pm.response.json().error).to.not.have.property('details');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{qaUnknownEmail}}\",\n  \"password\": \"definitely-not-the-password\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "login"]
+            },
+            "description": "§8.1 requires \"no such account\" and \"wrong password\" to be indistinguishable. The assertion compares this message to the previous request's. The *timing* half of that guarantee (a dummy bcrypt comparison for unknown emails) cannot be asserted reliably over HTTP and is covered by the integration suite instead."
+          }
+        },
+        {
+          "name": "GET /admin/museums — no Authorization header",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 UNAUTHENTICATED', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('UNAUTHENTICATED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums"]
+            },
+            "description": "`requireAuth` runs before `requireRole`, so a missing token is a 401 and never a 403."
+          }
+        },
+        {
+          "name": "GET /admin/museums — malformed token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 UNAUTHENTICATED', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('UNAUTHENTICATED');",
+                  "});",
+                  "",
+                  "pm.test('Verification failure is not leaked as a 500', function () {",
+                  "  pm.expect(pm.response.code).to.not.eql(500);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer this.is.not-a-jwt" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums"]
+            },
+            "description": "A `jsonwebtoken` verification error must be translated into a 401, not allowed to bubble into the generic 500 handler."
+          }
+        },
+        {
+          "name": "POST /admin/login — malformed JSON body",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 VALIDATION_ERROR, not 500', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"someone@example.test\", \"password\":",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "login"]
+            },
+            "description": "`express.json()` throws before any router runs, so this error has to be classified by the central error handler rather than a route. It used to fall through to a 500; the fix landed in D1-8.\n\nBecause the body parser rejects this before the login router, it does not count against the per-IP login rate limit."
+          }
+        },
+        {
+          "name": "POST /admin/login — oversized body",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// The global cap is 100kb (src/app.ts). Send comfortably past it.",
+                  "pm.environment.set('oversizedPassword', 'x'.repeat(120000));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('413 VALIDATION_ERROR', function () {",
+                  "  pm.response.to.have.status(413);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+                  "});",
+                  "",
+                  "// Don't leave 120kb of junk in the environment file.",
+                  "pm.environment.unset('oversizedPassword');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"someone@example.test\",\n  \"password\": \"{{oversizedPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "login"]
+            },
+            "description": "Proves the 100kb body cap is enforced and reported as a client error. Like the malformed-JSON case, this is rejected before the login router, so it costs nothing against the rate limit."
+          }
+        },
+        {
+          "name": "GET /admin/does-not-exist — authenticated 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 NOT_FOUND for an authenticated caller', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{systemToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/does-not-exist",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "does-not-exist"]
+            },
+            "description": "An unmatched route still returns the standard envelope. Note the deliberate asymmetry: without a token the same URL returns 401, because `/admin/*` authenticates before routing and so never confirms to a stranger which paths exist."
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Museums",
+      "description": "System-admin-only museum management, plus the museum-admin exceptions. Creates \"museum B\" — a throwaway tenant with a per-run unique slug — which folders 03-05 use as the tenant museum A must never be able to touch.\n\nAlso pages through `GET /admin/museums` with `limit=1` to prove the cursor actually advances against a real database.",
+      "item": [
+        {
+          "name": "GET /admin/museums — list",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Paginated envelope: data array + nextCursor', function () {",
+                  "  pm.expect(body.data).to.be.an('array');",
+                  "  pm.expect(body).to.have.property('nextCursor');",
+                  "});",
+                  "",
+                  "pm.test('Both seeded museums are present', function () {",
+                  "  const slugs = body.data.map(function (m) { return m.slug; });",
+                  "  pm.expect(slugs).to.include('adwa');",
+                  "  pm.expect(slugs).to.include('louvre');",
+                  "});",
+                  "",
+                  "pm.test('No password hash is ever serialised', function () {",
+                  "  pm.expect(pm.response.text()).to.not.include('passwordHash');",
+                  "  pm.expect(pm.response.text()).to.not.include('$2b$');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{systemToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums"]
+            },
+            "description": "Only a SYSTEM_ADMIN may enumerate tenants."
+          }
+        },
+        {
+          "name": "GET /admin/museums — page 1 of 1 per page",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('limit is respected', function () {",
+                  "  pm.expect(body.data).to.have.lengthOf(1);",
+                  "});",
+                  "",
+                  "pm.test('nextCursor is set when more rows exist', function () {",
+                  "  pm.expect(body.nextCursor).to.be.a('string').and.to.have.length.above(0);",
+                  "});",
+                  "",
+                  "if (body.data.length === 1) {",
+                  "  pm.environment.set('museumPage1Id', body.data[0].id);",
+                  "  pm.environment.set('museumCursor', body.nextCursor);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{systemToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums?limit=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums"],
+              "query": [{ "key": "limit", "value": "1" }]
+            },
+            "description": "Forces a small page so the cursor path is exercised. There are always at least two seeded museums, so `nextCursor` must be non-null."
+          }
+        },
+        {
+          "name": "GET /admin/museums — page 2 via cursor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Page 2 returns a row', function () {",
+                  "  pm.expect(body.data).to.have.lengthOf(1);",
+                  "});",
+                  "",
+                  "pm.test('Cursor advanced — no overlap with page 1', function () {",
+                  "  pm.expect(body.data[0].id).to.not.eql(pm.environment.get('museumPage1Id'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{systemToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums?limit=1&cursor={{museumCursor}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums"],
+              "query": [
+                { "key": "limit", "value": "1" },
+                { "key": "cursor", "value": "{{museumCursor}}" }
+              ]
+            },
+            "description": "The cursor is exclusive (`skip: 1`), so page 2 must not repeat page 1's row. This is the property that keeps an admin UI from showing a duplicate while scrolling."
+          }
+        },
+        {
+          "name": "GET /admin/museums — as museum admin (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 FORBIDDEN — role gate, not a scope error', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums"]
+            },
+            "description": "A museum admin cannot enumerate other tenants. The code is `FORBIDDEN` rather than `CROSS_TENANT_ACCESS` because no specific resource was addressed — the whole route is off limits."
+          }
+        },
+        {
+          "name": "POST /admin/museums — create museum B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 201) {",
+                  "  throw new Error('Museum B was not created; folders 03-05 cannot run. Body: ' + pm.response.text());",
+                  "}",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('museumBId', body.museum.id);",
+                  "",
+                  "pm.test('Slug is stored as sent', function () {",
+                  "  pm.expect(body.museum.slug).to.eql(pm.environment.get('qaSlug'));",
+                  "});",
+                  "",
+                  "pm.test('New museums start ACTIVE', function () {",
+                  "  pm.expect(body.museum.status).to.eql('ACTIVE');",
+                  "});",
+                  "",
+                  "pm.test('First admin is created in the same transaction and bound to the museum', function () {",
+                  "  pm.expect(body.admin.role).to.eql('MUSEUM_ADMIN');",
+                  "  pm.expect(body.admin.museumId).to.eql(body.museum.id);",
+                  "  pm.expect(body.admin.email).to.eql(pm.environment.get('qaAdminEmail'));",
+                  "});",
+                  "",
+                  "pm.test('Response never echoes the password', function () {",
+                  "  pm.expect(pm.response.text()).to.not.include(pm.environment.get('qaAdminPassword'));",
+                  "  pm.expect(pm.response.text()).to.not.include('passwordHash');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{systemToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"QA Museum {{qaRunId}}\",\n  \"slug\": \"{{qaSlug}}\",\n  \"adminEmail\": \"{{qaAdminEmail}}\",\n  \"adminPassword\": \"{{qaAdminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums"]
+            },
+            "description": "Creates the museum and its first admin atomically — a tenant nobody can log into would be a dead end. The slug and email carry this run's unique suffix so the request stays repeatable."
+          }
+        },
+        {
+          "name": "POST /admin/museums — duplicate slug (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 CONFLICT', function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('CONFLICT');",
+                  "});",
+                  "",
+                  "pm.test('Message names the slug, not the email', function () {",
+                  "  pm.expect(pm.response.json().error.message.toLowerCase()).to.include('slug');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{systemToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"QA Museum {{qaRunId}} duplicate\",\n  \"slug\": \"{{qaSlug}}\",\n  \"adminEmail\": \"other-{{qaRunId}}@example.test\",\n  \"adminPassword\": \"{{qaAdminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums"]
+            },
+            "description": "Slug uniqueness is checked up front so the caller gets a message naming the actual problem, rather than a generic constraint violation."
+          }
+        },
+        {
+          "name": "POST /admin/museums — duplicate admin email (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 CONFLICT', function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('CONFLICT');",
+                  "});",
+                  "",
+                  "pm.test('Message names the email', function () {",
+                  "  pm.expect(pm.response.json().error.message.toLowerCase()).to.include('email');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{systemToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"QA Museum {{qaRunId}} second\",\n  \"slug\": \"{{qaSlug}}-second\",\n  \"adminEmail\": \"{{qaAdminEmail}}\",\n  \"adminPassword\": \"{{qaAdminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums"]
+            },
+            "description": "A fresh slug but an email already in use. AdminUser.email is globally unique — one person cannot administer two museums with the same login."
+          }
+        },
+        {
+          "name": "POST /admin/museums — invalid slug (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 VALIDATION_ERROR', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+                  "});",
+                  "",
+                  "pm.test('details name the offending field', function () {",
+                  "  const details = pm.response.json().error.details;",
+                  "  pm.expect(details).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(details.map(function (d) { return d.path; })).to.include('slug');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{systemToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bad Slug Museum\",\n  \"slug\": \"Not A Valid Slug!\",\n  \"adminEmail\": \"bad-slug-{{qaRunId}}@example.test\",\n  \"adminPassword\": \"{{qaAdminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums"]
+            },
+            "description": "The slug becomes part of public URLs, so it is restricted to lowercase alphanumerics and hyphens. This is also the only request in the collection that asserts the `details` array a VALIDATION_ERROR carries."
+          }
+        },
+        {
+          "name": "POST /admin/login — museum B admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK — the admin created with the museum can log in', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 200) {",
+                  "  throw new Error('Museum B admin could not log in. Body: ' + pm.response.text());",
+                  "}",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('museumBToken', body.token);",
+                  "",
+                  "pm.test('Token is scoped to museum B', function () {",
+                  "  pm.expect(body.museumId).to.eql(pm.environment.get('museumBId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{qaAdminEmail}}\",\n  \"password\": \"{{qaAdminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "login"]
+            },
+            "description": "Closes the loop on museum creation: the password sent to `POST /admin/museums` was hashed correctly and the account is usable immediately."
+          }
+        },
+        {
+          "name": "PATCH /admin/museums/:id — own settings as museum admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK — a museum admin may edit its own non-status settings', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('defaultVoiceId was written', function () {",
+                  "  pm.expect(pm.response.json().defaultVoiceId).to.eql('qa-voice-' + pm.environment.get('qaRunId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"defaultVoiceId\": \"qa-voice-{{qaRunId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums/{{museumAId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums", "{{museumAId}}"]
+            },
+            "description": "`ticketValidationUrl`, `systemPrompt`, and `defaultVoiceId` are the museum's own business. Only `status` is reserved for the system admin, which the next request checks."
+          }
+        },
+        {
+          "name": "POST /admin/museums/:id/admins — add a second admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('New admin is bound to museum B as MUSEUM_ADMIN', function () {",
+                  "  pm.expect(body.role).to.eql('MUSEUM_ADMIN');",
+                  "  pm.expect(body.museumId).to.eql(pm.environment.get('museumBId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{systemToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{qaExtraAdminEmail}}\",\n  \"password\": \"{{qaAdminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums/{{museumBId}}/admins",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums", "{{museumBId}}", "admins"]
+            },
+            "description": "A museum can have more than one administrator. Adding one is system-admin-only, so a museum cannot grant itself extra logins."
+          }
+        },
+        {
+          "name": "POST /admin/museums/:id/admins — duplicate email (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 CONFLICT', function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('CONFLICT');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{systemToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{qaExtraAdminEmail}}\",\n  \"password\": \"{{qaAdminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums/{{museumBId}}/admins",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums", "{{museumBId}}", "admins"]
+            },
+            "description": "The same email a second time. Repeatable because the email carries this run's suffix."
+          }
+        },
+        {
+          "name": "GET /admin/museums/:id — non-existent (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 NOT_FOUND', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{systemToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums/{{fakeUuid}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums", "{{fakeUuid}}"]
+            },
+            "description": "A well-formed but unknown id. `requireMuseumScope` turns a null resolution into a 404 before it ever compares tenants, so absence and cross-tenant access stay distinguishable."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Rooms",
+      "description": "Room CRUD plus the two rules that make the tour sequence trustworthy: `nextRoomId` must point inside the same museum, and it must never form a cycle.\n\nThe first two requests are the important ones — they send a *different* museum's id in the body and query string and prove the server ignores both in favour of the token.\n\nCreates `roomA` (kept for folders 04-05), a delete-flow pair, and `roomB` inside museum B.",
+      "item": [
+        {
+          "name": "POST /admin/rooms — body claims another museum",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 201) {",
+                  "  throw new Error('Room A was not created; folders 04-05 cannot run. Body: ' + pm.response.text());",
+                  "}",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('roomAId', body.id);",
+                  "",
+                  "pm.test('§14.2: the body museumId was IGNORED — room belongs to the token museum', function () {",
+                  "  pm.expect(body.museumId).to.eql(pm.environment.get('museumAId'));",
+                  "  pm.expect(body.museumId).to.not.eql(pm.environment.get('museumBId'));",
+                  "});",
+                  "",
+                  "pm.test('Content fields round-trip', function () {",
+                  "  pm.expect(body.title).to.eql('QA Room A ' + pm.environment.get('qaRunId'));",
+                  "  pm.expect(body.narrationScript).to.be.a('string').and.to.have.length.above(0);",
+                  "});",
+                  "",
+                  "pm.test('nextRoomId starts null and legacyId is null for API-created rooms', function () {",
+                  "  pm.expect(body.nextRoomId).to.eql(null);",
+                  "  pm.expect(body.legacyId).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"museumId\": \"{{museumBId}}\",\n  \"title\": \"QA Room A {{qaRunId}}\",\n  \"roomOverviewText\": \"Grounding prose for the QA room, used by chat.\",\n  \"narrationScript\": \"Spoken narration script for the QA room.\",\n  \"storyOrder\": {{storyOrderA}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms"]
+            },
+            "description": "**The single most important request in the collection.** The body explicitly asks for museum B, and the museum admin's token says museum A. If the server ever honoured the body, one museum could write content into another's tour. The assertion checks the created room landed in A."
+          }
+        },
+        {
+          "name": "GET /admin/rooms?museumId=B — query claims another museum",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('§14.2: the query museumId was IGNORED — every row belongs to museum A', function () {",
+                  "  pm.expect(body.data).to.be.an('array').that.is.not.empty;",
+                  "  body.data.forEach(function (room) {",
+                  "    pm.expect(room.museumId, 'room ' + room.id).to.eql(pm.environment.get('museumAId'));",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test('Ordered by storyOrder ascending', function () {",
+                  "  const orders = body.data.map(function (r) { return r.storyOrder; });",
+                  "  pm.expect(orders).to.eql(orders.slice().sort(function (a, b) { return a - b; }));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms?museumId={{museumBId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms"],
+              "query": [{ "key": "museumId", "value": "{{museumBId}}" }]
+            },
+            "description": "The read-side counterpart. Asking for another tenant's rooms does not error — it silently returns your own, because the token's museum always wins."
+          }
+        },
+        {
+          "name": "GET /admin/rooms — system admin without museumId (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 VALIDATION_ERROR', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+                  "});",
+                  "",
+                  "pm.test('The message points at museumId', function () {",
+                  "  pm.expect(pm.response.text()).to.include('museumId');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{systemToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms"]
+            },
+            "description": "A system admin has no museum of its own, so \"which museum's rooms?\" has no default. Rather than returning every room across every tenant, the route insists on an explicit `museumId`."
+          }
+        },
+        {
+          "name": "GET /admin/rooms/:id — includes items",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Single-room fetch embeds its items (§14.2)', function () {",
+                  "  pm.expect(body.items).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('It is the room we created', function () {",
+                  "  pm.expect(body.id).to.eql(pm.environment.get('roomAId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomAId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomAId}}"]
+            },
+            "description": "Unlike the list route, fetching one room embeds its items so an editor screen needs a single request. The list route deliberately does not, to keep pages cheap."
+          }
+        },
+        {
+          "name": "PATCH /admin/rooms/:id — edit content",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Title was updated', function () {",
+                  "  pm.expect(body.title).to.eql('QA Room A ' + pm.environment.get('qaRunId') + ' (edited)');",
+                  "});",
+                  "",
+                  "pm.test('Omitted fields were left alone', function () {",
+                  "  pm.expect(body.narrationScript).to.eql('Spoken narration script for the QA room.');",
+                  "});",
+                  "",
+                  "pm.test('updatedAt moved past createdAt', function () {",
+                  "  pm.expect(new Date(body.updatedAt).getTime()).to.be.at.least(new Date(body.createdAt).getTime());",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"QA Room A {{qaRunId}} (edited)\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomAId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomAId}}"]
+            },
+            "description": "A partial update. Side effect worth knowing: any room content edit purges that room's cached chat answers, since an answer generated from the old text is no longer grounded."
+          }
+        },
+        {
+          "name": "PATCH /admin/rooms/:id — duplicate storyOrder (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 CONFLICT', function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('CONFLICT');",
+                  "});",
+                  "",
+                  "pm.test('Message names storyOrder', function () {",
+                  "  pm.expect(pm.response.json().error.message).to.include('storyOrder');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storyOrder\": 1\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomAId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomAId}}"]
+            },
+            "description": "`storyOrder` 1 is already taken by the first seeded room. Two rooms sharing a position would make the visitor's \"next room\" ambiguous, so it is rejected rather than silently reordered."
+          }
+        },
+        {
+          "name": "POST /admin/rooms — room in museum B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 201) {",
+                  "  throw new Error('Room B was not created; the isolation folder cannot run. Body: ' + pm.response.text());",
+                  "}",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('roomBId', body.id);",
+                  "",
+                  "pm.test('Belongs to museum B', function () {",
+                  "  pm.expect(body.museumId).to.eql(pm.environment.get('museumBId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumBToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"QA Room B {{qaRunId}}\",\n  \"roomOverviewText\": \"Museum B grounding prose.\",\n  \"narrationScript\": \"Museum B narration script.\",\n  \"storyOrder\": 1\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms"]
+            },
+            "description": "The target for every cross-tenant probe in folder 05. `storyOrder` 1 is free because museum B was created empty this run."
+          }
+        },
+        {
+          "name": "PATCH /admin/rooms/:id — cross-museum nextRoomId (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 INVALID_ROOM_SEQUENCE', function () {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('INVALID_ROOM_SEQUENCE');",
+                  "});",
+                  "",
+                  "pm.test('Message explains the same-museum rule', function () {",
+                  "  pm.expect(pm.response.json().error.message).to.include('same museum');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nextRoomId\": \"{{roomBId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomAId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomAId}}"]
+            },
+            "description": "Without this rule, a visitor walking museum A's tour could be handed a room in museum B. Note the code is `INVALID_ROOM_SEQUENCE`, not `CROSS_TENANT_ACCESS` — the caller is editing its own room, it just named an invalid target."
+          }
+        },
+        {
+          "name": "PATCH /admin/rooms/:id — self-referencing cycle (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 INVALID_ROOM_SEQUENCE', function () {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('INVALID_ROOM_SEQUENCE');",
+                  "});",
+                  "",
+                  "pm.test('Message names the cycle', function () {",
+                  "  pm.expect(pm.response.json().error.message).to.include('cycle');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nextRoomId\": \"{{roomAId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomAId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomAId}}"]
+            },
+            "description": "The shortest possible cycle: a room pointing at itself. The validator walks the whole `nextRoomId` chain, so longer loops (A -> B -> A) are caught the same way — a visitor must never be able to loop forever."
+          }
+        },
+        {
+          "name": "POST /admin/rooms — delete-flow room 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "  pm.environment.set('roomDel1Id', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"QA Delete Target {{qaRunId}}\",\n  \"roomOverviewText\": \"Created only to be deleted.\",\n  \"narrationScript\": \"Created only to be deleted.\",\n  \"storyOrder\": {{storyOrderDel1}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms"]
+            },
+            "description": "A throwaway room that the next one will point at, so the delete guard has something to protect."
+          }
+        },
+        {
+          "name": "POST /admin/rooms — delete-flow room 2 (points at room 1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 201) { return; }",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('roomDel2Id', body.id);",
+                  "",
+                  "pm.test('A same-museum nextRoomId is accepted', function () {",
+                  "  pm.expect(body.nextRoomId).to.eql(pm.environment.get('roomDel1Id'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"QA Delete Referrer {{qaRunId}}\",\n  \"roomOverviewText\": \"Points at the delete target.\",\n  \"narrationScript\": \"Points at the delete target.\",\n  \"storyOrder\": {{storyOrderDel2}},\n  \"nextRoomId\": \"{{roomDel1Id}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms"]
+            },
+            "description": "Also the positive case for `nextRoomId`: pointing at a room in the same museum, on create, is fine. A brand-new room cannot form a cycle because nothing can already point at it."
+          }
+        },
+        {
+          "name": "DELETE /admin/rooms/:id — referenced, no force (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 ROOM_REFERENCED', function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('ROOM_REFERENCED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomDel1Id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomDel1Id}}"]
+            },
+            "description": "Another room's `nextRoomId` points here. Deleting silently would break that tour with no warning, so the caller has to say `?force=true` and accept the consequence."
+          }
+        },
+        {
+          "name": "DELETE /admin/rooms/:id?force=false — refuses (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 ROOM_REFERENCED — force=false means do not force', function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('ROOM_REFERENCED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomDel1Id}}?force=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomDel1Id}}"],
+              "query": [{ "key": "force", "value": "false" }]
+            },
+            "description": "The value any UI checkbox would send to mean \"no, don't force\".\n\nThis used to **delete the room anyway**: `force` was parsed with `z.coerce.boolean()`, and `Boolean('false')` is `true`, so the string turned the flag on. Recorded as Tier 1 finding 5 in `docs/d1-audit.md` and since fixed — `force` is now parsed as an explicit `'true' | 'false'` enum. This request is the regression guard."
+          }
+        },
+        {
+          "name": "DELETE /admin/rooms/:id?force=0 — rejected (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 VALIDATION_ERROR — an unrecognised flag value is refused, not guessed', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+                  "});",
+                  "",
+                  "pm.test('details point at force', function () {",
+                  "  pm.expect(pm.response.json().error.details[0].path).to.eql('force');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomDel1Id}}?force=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomDel1Id}}"],
+              "query": [{ "key": "force", "value": "0" }]
+            },
+            "description": "`0`, `no`, `False`, and anything else are rejected rather than interpreted. On a destructive operation, guessing what the caller meant is worse than making them say it precisely."
+          }
+        },
+        {
+          "name": "DELETE /admin/rooms/:id?force=true — deletes (204)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content — the explicit opt-in works', function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomDel1Id}}?force=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomDel1Id}}"],
+              "query": [{ "key": "force", "value": "true" }]
+            },
+            "description": "The one value that actually forces the delete. The next two requests confirm the room is gone and that the referring room's pointer was nulled rather than left dangling."
+          }
+        },
+        {
+          "name": "GET /admin/rooms/:id — after delete (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 NOT_FOUND', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomDel1Id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomDel1Id}}"]
+            },
+            "description": "Confirms the delete actually happened rather than being swallowed."
+          }
+        },
+        {
+          "name": "GET /admin/rooms/:id — referrer's pointer was nulled",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('onDelete: SetNull cleared the dangling nextRoomId', function () {",
+                  "  pm.expect(pm.response.json().nextRoomId).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomDel2Id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomDel2Id}}"]
+            },
+            "description": "The forced delete left no dangling pointer: the database's `onDelete: SetNull` cleared the referrer's `nextRoomId`, so the tour ends cleanly instead of pointing at a room that no longer exists."
+          }
+        },
+        {
+          "name": "DELETE /admin/rooms/:id — unreferenced (204)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});",
+                  "",
+                  "pm.test('204 carries no body', function () {",
+                  "  pm.expect(pm.response.text()).to.be.oneOf(['', undefined, null]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomDel2Id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomDel2Id}}"]
+            },
+            "description": "Nothing points at this room any more, so it deletes without a force flag. Also cleans up the delete-flow pair."
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Items",
+      "description": "Item CRUD and bulk reordering inside `roomA`. Items have no `museumId` of their own — their tenant is resolved through `item.room.museumId`, which is what the isolation folder then attacks.\n\nEnds by creating one item inside museum B for folder 05 to aim at.",
+      "item": [
+        {
+          "name": "POST /admin/items — first item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 201) {",
+                  "  throw new Error('Item 1 was not created. Body: ' + pm.response.text());",
+                  "}",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('itemA1Id', body.id);",
+                  "",
+                  "pm.test('displayOrder defaults to 0 in an empty room', function () {",
+                  "  pm.expect(body.displayOrder).to.eql(0);",
+                  "});",
+                  "",
+                  "pm.test('Attached to room A', function () {",
+                  "  pm.expect(body.roomId).to.eql(pm.environment.get('roomAId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"{{roomAId}}\",\n  \"name\": \"QA Item One\",\n  \"shortDescription\": \"First QA item.\",\n  \"detailText\": \"Longer detail text for the first QA item.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "items"]
+            },
+            "description": "`displayOrder` is optional. Omitted, it appends to the end of the room — here position 0, because room A was created empty this run."
+          }
+        },
+        {
+          "name": "POST /admin/items — second item appends",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 201) { return; }",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('itemA2Id', body.id);",
+                  "",
+                  "pm.test('displayOrder appended to 1', function () {",
+                  "  pm.expect(body.displayOrder).to.eql(1);",
+                  "});",
+                  "",
+                  "pm.test('imageUrl round-trips', function () {",
+                  "  pm.expect(body.imageUrl).to.eql('https://example.test/qa-item-two.jpg');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"{{roomAId}}\",\n  \"name\": \"QA Item Two\",\n  \"shortDescription\": \"Second QA item.\",\n  \"detailText\": \"Longer detail text for the second QA item.\",\n  \"imageUrl\": \"https://example.test/qa-item-two.jpg\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "items"]
+            },
+            "description": "Proves the append counter uses the room's current item count rather than a fixed default."
+          }
+        },
+        {
+          "name": "POST /admin/items — third item, explicit displayOrder",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 201) { return; }",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('itemA3Id', body.id);",
+                  "",
+                  "pm.test('An explicit displayOrder is honoured', function () {",
+                  "  pm.expect(body.displayOrder).to.eql(5);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"{{roomAId}}\",\n  \"name\": \"QA Item Three\",\n  \"shortDescription\": \"Third QA item.\",\n  \"detailText\": \"Longer detail text for the third QA item.\",\n  \"displayOrder\": 5\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "items"]
+            },
+            "description": "`displayOrder` is not unique within a room, so gaps and duplicates are allowed. That is why the list route orders by `(displayOrder, id)` — the id keeps paging stable when orders tie."
+          }
+        },
+        {
+          "name": "GET /admin/items?roomId=A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('All three items are listed', function () {",
+                  "  pm.expect(body.data).to.have.lengthOf(3);",
+                  "});",
+                  "",
+                  "pm.test('Ordered by displayOrder ascending', function () {",
+                  "  const orders = body.data.map(function (i) { return i.displayOrder; });",
+                  "  pm.expect(orders).to.eql([0, 1, 5]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/items?roomId={{roomAId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "items"],
+              "query": [{ "key": "roomId", "value": "{{roomAId}}" }]
+            },
+            "description": "`roomId` is required — items are always listed within a room, never across a whole museum."
+          }
+        },
+        {
+          "name": "GET /admin/items — non-existent roomId (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 NOT_FOUND', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/items?roomId={{fakeUuid}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "items"],
+              "query": [{ "key": "roomId", "value": "{{fakeUuid}}" }]
+            },
+            "description": "The route loads the room before it can check tenancy, so an unknown room is a 404 rather than a validation error about `roomId`. This 404 went undeclared in `openapi.yaml` until Tier 1 finding 4 of `docs/d1-audit.md` was fixed."
+          }
+        },
+        {
+          "name": "PATCH /admin/items/:id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Name was updated', function () {",
+                  "  pm.expect(body.name).to.eql('QA Item One (edited)');",
+                  "});",
+                  "",
+                  "pm.test('imageUrl can be cleared to null', function () {",
+                  "  pm.expect(body.imageUrl).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"QA Item One (edited)\",\n  \"imageUrl\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/items/{{itemA1Id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "items", "{{itemA1Id}}"]
+            },
+            "description": "Explicit `null` clears a nullable field, which is distinct from omitting it (leave unchanged). Editing an item also purges the parent room's cached chat answers."
+          }
+        },
+        {
+          "name": "PATCH /admin/rooms/:id/items/order — bulk reorder",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Returns { ok: true }', function () {",
+                  "  pm.expect(pm.response.json().ok).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"itemIds\": [\"{{itemA3Id}}\", \"{{itemA1Id}}\", \"{{itemA2Id}}\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomAId}}/items/order",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomAId}}", "items", "order"]
+            },
+            "description": "One transaction for the whole room. Reordering one item at a time would mean N requests and transient duplicate positions visible to readers in between.\n\nThe body must name exactly the set of items already in the room, which is what the next two requests check."
+          }
+        },
+        {
+          "name": "GET /admin/items?roomId=A — reorder took effect",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('displayOrder was rewritten to a dense 0,1,2', function () {",
+                  "  pm.expect(body.data.map(function (i) { return i.displayOrder; })).to.eql([0, 1, 2]);",
+                  "});",
+                  "",
+                  "pm.test('Items are in the requested order — item 3 first', function () {",
+                  "  pm.expect(body.data.map(function (i) { return i.id; })).to.eql([",
+                  "    pm.environment.get('itemA3Id'),",
+                  "    pm.environment.get('itemA1Id'),",
+                  "    pm.environment.get('itemA2Id')",
+                  "  ]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/items?roomId={{roomAId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "items"],
+              "query": [{ "key": "roomId", "value": "{{roomAId}}" }]
+            },
+            "description": "The reorder also normalises the gap left by the explicit `displayOrder: 5`, collapsing positions to 0,1,2."
+          }
+        },
+        {
+          "name": "PATCH /admin/rooms/:id/items/order — incomplete set (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 VALIDATION_ERROR', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+                  "});",
+                  "",
+                  "pm.test('details point at itemIds', function () {",
+                  "  pm.expect(pm.response.json().error.details[0].path).to.eql('itemIds');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"itemIds\": [\"{{itemA1Id}}\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomAId}}/items/order",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomAId}}", "items", "order"]
+            },
+            "description": "A partial list is rejected rather than partially applied. Accepting it would leave the omitted items at stale positions, silently duplicating orders."
+          }
+        },
+        {
+          "name": "PATCH /admin/rooms/:id/items/order — non-existent room (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 NOT_FOUND', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"itemIds\": [\"{{itemA1Id}}\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{fakeUuid}}/items/order",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{fakeUuid}}", "items", "order"]
+            },
+            "description": "Scope is resolved from the path before the body is even considered, so an unknown room is a 404 rather than a validation error about `itemIds`."
+          }
+        },
+        {
+          "name": "DELETE /admin/items/:id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/items/{{itemA3Id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "items", "{{itemA3Id}}"]
+            },
+            "description": "Deleting an item purges the parent room's cached chat answers, since \"what's in this room\" just changed."
+          }
+        },
+        {
+          "name": "PATCH /admin/items/:id — after delete (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 NOT_FOUND', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Should never be applied\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/items/{{itemA3Id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "items", "{{itemA3Id}}"]
+            },
+            "description": "A deleted item resolves to no museum, which `requireMuseumScope` reports as 404 before any tenant comparison."
+          }
+        },
+        {
+          "name": "POST /admin/items — item inside museum B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 201) {",
+                  "  throw new Error('Museum B item was not created; the isolation folder cannot run. Body: ' + pm.response.text());",
+                  "}",
+                  "",
+                  "pm.environment.set('itemBId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumBToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"{{roomBId}}\",\n  \"name\": \"Museum B Item\",\n  \"shortDescription\": \"Belongs to museum B.\",\n  \"detailText\": \"Museum A must never be able to read or write this.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "items"]
+            },
+            "description": "Created by museum B's own admin. Folder 05 then tries to reach it with museum A's token."
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Tenant isolation",
+      "description": "The live-server mirror of the automated isolation matrix. Every request here uses **museum A's token against museum B's resources** and must be refused, then the same request as the system admin must succeed — proving the refusals come from scope enforcement and not from a broken route.\n\nThe distinction that matters: `CROSS_TENANT_ACCESS` means \"this resource exists and is not yours\"; `FORBIDDEN` means \"this action is not available to your role at all\".",
+      "item": [
+        {
+          "name": "A -> B museum: GET (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 CROSS_TENANT_ACCESS', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('CROSS_TENANT_ACCESS');",
+                  "});",
+                  "",
+                  "pm.test('No museum data leaked in the error body', function () {",
+                  "  pm.expect(pm.response.text()).to.not.include(pm.environment.get('qaSlug'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums/{{museumBId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums", "{{museumBId}}"]
+            },
+            "description": "Matrix case: museum admin reads another museum."
+          }
+        },
+        {
+          "name": "A -> B room: GET (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 CROSS_TENANT_ACCESS', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('CROSS_TENANT_ACCESS');",
+                  "});",
+                  "",
+                  "pm.test('No room content leaked', function () {",
+                  "  pm.expect(pm.response.text()).to.not.include('Museum B narration script.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomBId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomBId}}"]
+            },
+            "description": "Matrix case: museum admin reads another museum's room."
+          }
+        },
+        {
+          "name": "A -> B room: PATCH (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 CROSS_TENANT_ACCESS', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('CROSS_TENANT_ACCESS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Vandalised by museum A\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomBId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomBId}}"]
+            },
+            "description": "Matrix case: museum admin edits another museum's room. Scope is checked before the body is validated, so a well-formed malicious edit is refused just as firmly as a malformed one."
+          }
+        },
+        {
+          "name": "A -> B room: DELETE (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 CROSS_TENANT_ACCESS', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('CROSS_TENANT_ACCESS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomBId}}?force=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomBId}}"],
+              "query": [{ "key": "force", "value": "true" }]
+            },
+            "description": "Matrix case: museum admin deletes another museum's room — with `force=true`, the most destructive form. Refused before the force flag is even read."
+          }
+        },
+        {
+          "name": "A -> B items: GET list (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 CROSS_TENANT_ACCESS', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('CROSS_TENANT_ACCESS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/items?roomId={{roomBId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "items"],
+              "query": [{ "key": "roomId", "value": "{{roomBId}}" }]
+            },
+            "description": "Matrix case: items are listed by `roomId`, which is a query field. Scope therefore cannot be checked by middleware — it is checked in the service after the room is loaded from the database, and this proves that check is really there."
+          }
+        },
+        {
+          "name": "A -> B items: POST into B's room (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 CROSS_TENANT_ACCESS', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('CROSS_TENANT_ACCESS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"{{roomBId}}\",\n  \"name\": \"Injected by museum A\",\n  \"shortDescription\": \"Should never exist.\",\n  \"detailText\": \"Should never exist.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "items"]
+            },
+            "description": "Matrix case: the write-side version of the previous request. `roomId` arrives in the body, so this is the path an attacker would actually try."
+          }
+        },
+        {
+          "name": "A -> B item: PATCH (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 CROSS_TENANT_ACCESS', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('CROSS_TENANT_ACCESS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Vandalised by museum A\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/items/{{itemBId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "items", "{{itemBId}}"]
+            },
+            "description": "Matrix case: an item has no `museumId` column. Its tenant is resolved by joining through its room, and this proves that join is what gates access."
+          }
+        },
+        {
+          "name": "A -> B item: DELETE (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 CROSS_TENANT_ACCESS', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('CROSS_TENANT_ACCESS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/items/{{itemBId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "items", "{{itemBId}}"]
+            },
+            "description": "Matrix case: museum admin deletes another museum's item."
+          }
+        },
+        {
+          "name": "A -> B reorder (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 CROSS_TENANT_ACCESS', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('CROSS_TENANT_ACCESS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"itemIds\": [\"{{itemBId}}\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomBId}}/items/order",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomBId}}", "items", "order"]
+            },
+            "description": "Matrix case: the reorder route lives under `/rooms` but is implemented in the items module. Easy to forget when adding scope checks, so it gets its own probe."
+          }
+        },
+        {
+          "name": "A -> own status: PATCH (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 FORBIDDEN — role gate, not a scope error', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{museumAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACTIVE\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums/{{museumAId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums", "{{museumAId}}"]
+            },
+            "description": "Matrix case: museum A editing **its own** museum, which it is otherwise allowed to do — but `status` is reserved for the platform operator. Otherwise a suspended museum could simply un-suspend itself. The code is `FORBIDDEN` because this is a field-level role rule, not a tenant boundary."
+          }
+        },
+        {
+          "name": "System admin -> B room: GET (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK — the system admin crosses tenants by design', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('It really is museum B\\'s room', function () {",
+                  "  pm.expect(pm.response.json().museumId).to.eql(pm.environment.get('museumBId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{systemToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomBId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomBId}}"]
+            },
+            "description": "**The control case.** Every 403 above must be caused by scope enforcement, not by a route that is simply broken or a resource that does not exist. The same request with a system-admin token returns 200, which proves the resource is reachable and the refusals were deliberate."
+          }
+        },
+        {
+          "name": "Suspend museum B (system admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Status is SUSPENDED', function () {",
+                  "  pm.expect(pm.response.json().status).to.eql('SUSPENDED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{systemToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"SUSPENDED\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums/{{museumBId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums", "{{museumBId}}"]
+            },
+            "description": "Suspension is the supported way to cut a museum off — there is deliberately no museum delete, so a non-paying tenant's content is preserved rather than destroyed."
+          }
+        },
+        {
+          "name": "B's pre-suspension token is rejected (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 FORBIDDEN', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN');",
+                  "});",
+                  "",
+                  "pm.test('Message explains the suspension', function () {",
+                  "  pm.expect(pm.response.json().error.message.toLowerCase()).to.include('suspended');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumBToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomBId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomBId}}"]
+            },
+            "description": "**Matrix case worth reading closely.** This token was issued *before* the suspension and is still cryptographically valid for hours. Access is refused anyway, because `requireAuth` re-reads the museum's status from the database on every single request. Without that, suspending a museum would do nothing until its admins' tokens happened to expire."
+          }
+        },
+        {
+          "name": "Reactivate museum B (system admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Status is ACTIVE again', function () {",
+                  "  pm.expect(pm.response.json().status).to.eql('ACTIVE');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{systemToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACTIVE\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums/{{museumBId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums", "{{museumBId}}"]
+            },
+            "description": "Suspension is reversible and does not touch content."
+          }
+        },
+        {
+          "name": "B's token works again after reactivation (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK — the same token is usable again, no re-login needed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumBToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomBId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomBId}}"]
+            },
+            "description": "The very same token that was refused two requests ago now works, confirming suspension gates on live database state rather than invalidating tokens."
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Cleanup",
+      "description": "Removes everything this run created, so the collection can be run again immediately against the same database.\n\nThe one thing that cannot be cleaned up is museum B itself: there is deliberately no museum delete route (suspension replaces it). It is left SUSPENDED so leftover QA tenants are visibly inert. Deleting them, if they pile up, is a database job — see the README.",
+      "item": [
+        {
+          "name": "DELETE /admin/rooms/:id — room B (cascades its items)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumBToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomBId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomBId}}"]
+            },
+            "description": "Deleting a room cascades to its items at the database level, so the museum B item goes with it."
+          }
+        },
+        {
+          "name": "GET /admin/items?roomId=B — cascade confirmed (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 NOT_FOUND — the room and its items are gone', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumBToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/items?roomId={{roomBId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "items"],
+              "query": [{ "key": "roomId", "value": "{{roomBId}}" }]
+            },
+            "description": "Verifies the cascade rather than assuming it."
+          }
+        },
+        {
+          "name": "DELETE /admin/rooms/:id — room A (cascades its items)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms/{{roomAId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms", "{{roomAId}}"]
+            },
+            "description": "Returns the seeded Adwa museum to exactly the four rooms the seed script created, which is what makes the next run's `storyOrder` and duplicate assertions behave identically."
+          }
+        },
+        {
+          "name": "GET /admin/rooms — museum A is back to its seeded rooms",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('No QA rooms are left behind', function () {",
+                  "  const leftovers = pm.response.json().data.filter(function (r) {",
+                  "    return r.title.indexOf('QA ') === 0;",
+                  "  });",
+                  "  pm.expect(leftovers, 'leftover QA rooms: ' + JSON.stringify(leftovers.map(function (r) { return r.title; }))).to.be.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/rooms?limit=200",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "rooms"],
+              "query": [{ "key": "limit", "value": "200" }]
+            },
+            "description": "The repeatability check. If this fails, an earlier request left a room behind and the next run may hit a `storyOrder` conflict."
+          }
+        },
+        {
+          "name": "PATCH /admin/museums/:id — suspend museum B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Leftover QA museum is left inert', function () {",
+                  "  pm.expect(pm.response.json().status).to.eql('SUSPENDED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{systemToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"SUSPENDED\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums/{{museumBId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums", "{{museumBId}}"]
+            },
+            "description": "Museum B cannot be deleted through the API by design. Suspending it means its admins can no longer authenticate, so each run leaves behind an inert tenant rather than a live one."
+          }
+        }
+      ]
+    }
+  ]
+}

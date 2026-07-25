@@ -1,0 +1,75 @@
+name: backend CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tourguide
+          POSTGRES_PASSWORD: tourguide_dev_password
+          POSTGRES_DB: ai_tour_guide_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tourguide -d ai_tour_guide_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      # These must name DIFFERENT databases: the integration suite TRUNCATEs
+      # every table in TEST_DATABASE_URL between tests, and tests/setup/testEnv.ts
+      # refuses to run if the two are equal. Only TEST_DATABASE_URL is actually
+      # used here; DATABASE_URL exists because config/env.ts requires it to boot.
+      DATABASE_URL: postgresql://tourguide:tourguide_dev_password@localhost:5432/ai_tour_guide
+      TEST_DATABASE_URL: postgresql://tourguide:tourguide_dev_password@localhost:5432/ai_tour_guide_test
+      JWT_SECRET: ci-only-secret-do-not-use-in-prod-32chars
+      JWT_EXPIRES_IN: 12h
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format
+
+      - name: Generate OpenAPI doc
+        run: npm run generate:openapi
+
+      # Regenerating alone proves nothing: a Zod change without a regenerate
+      # would leave the committed contract silently stale. This fails the build
+      # if openapi/openapi.yaml no longer matches the schemas it comes from.
+      - name: Fail if the committed OpenAPI doc is stale
+        run: git diff --exit-code -- openapi/openapi.yaml
+
+      # No separate migrate step: tests/helpers/db.ts ensureTestSchema() runs
+      # `prisma migrate deploy` itself against TEST_DATABASE_URL.
+      - name: Test
+        run: npm run test
