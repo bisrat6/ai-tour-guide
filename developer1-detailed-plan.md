@@ -273,7 +273,7 @@ Acceptance criteria:
 
 ### D1-6 — Items
 
-**Status:** Not started
+**Status:** Done
 
 Goal: rooms can hold and manage their content items, scoped the same way rooms are.
 

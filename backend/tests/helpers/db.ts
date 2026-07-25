@@ -116,10 +116,15 @@ export async function seedItem(opts: {
   });
 }
 
-export async function seedChatAnswer(opts: { roomId: string; questionHash: string }) {
+export async function seedChatAnswer(opts: {
+  roomId: string;
+  itemId?: string;
+  questionHash: string;
+}) {
   return prisma.chatAnswer.create({
     data: {
       roomId: opts.roomId,
+      itemId: opts.itemId ?? null,
       questionHash: opts.questionHash,
       question: 'What is this room about?',
       answer: 'A cached answer.',

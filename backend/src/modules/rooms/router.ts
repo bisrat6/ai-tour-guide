@@ -4,10 +4,12 @@ import { ApiError } from '../../lib/errors.js';
 import { requireParam } from '../../lib/params.js';
 import { requireAuth } from '../../middleware/requireAuth.js';
 import { requireMuseumScope } from '../../middleware/requireMuseumScope.js';
+import { reorderRoomItems } from '../items/service.js';
 import {
   createRoomRequestSchema,
   deleteRoomQuerySchema,
   listRoomsQuerySchema,
+  reorderItemsRequestSchema,
   updateRoomRequestSchema,
 } from './schemas.js';
 import {
@@ -70,5 +72,18 @@ roomsRouter.delete(
     const query = deleteRoomQuerySchema.parse(req.query);
     await deleteRoom(requireParam(req, 'id'), { force: query.force ?? false }, req.admin.id);
     res.status(204).send();
+  }),
+);
+
+// §14.4 "New" route: lives under /rooms because the path does, but the
+// reorder logic itself is an items concern (items/service.ts).
+roomsRouter.patch(
+  '/rooms/:id/items/order',
+  requireMuseumScope(resolveRoomMuseumId),
+  asyncHandler(async (req, res) => {
+    if (!req.admin) throw ApiError.unauthenticated();
+    const body = reorderItemsRequestSchema.parse(req.body);
+    await reorderRoomItems(requireParam(req, 'id'), body.itemIds, req.admin);
+    res.json({ ok: true });
   }),
 );
