@@ -1,0 +1,211 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ────────────────────────────────────────────────────────────────────
+
+enum MuseumStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum AdminRole {
+  SYSTEM_ADMIN
+  MUSEUM_ADMIN
+}
+
+enum SubscriptionTier {
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+}
+
+// ── Core models ──────────────────────────────────────────────────────────────
+
+model Museum {
+  id                  String             @id @default(uuid())
+  name                String
+  slug                String             @unique
+  status              MuseumStatus       @default(ACTIVE)
+  ticketValidationUrl String?
+  systemPrompt        String?            @db.Text
+  defaultVoiceId      String?
+
+  tier                 SubscriptionTier   @default(BASIC)
+  subscriptionStatus   SubscriptionStatus @default(ACTIVE)
+  subscriptionRenewsAt DateTime?
+  billingEmail         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  adminUsers AdminUser[]
+  rooms      Room[]
+  auditLogs  AdminAuditLog[]
+  payments   Payment[]
+
+  @@index([status])
+  @@index([subscriptionStatus, subscriptionRenewsAt])
+}
+
+model AdminUser {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  role         AdminRole
+  museumId     String?
+  museum       Museum?   @relation(fields: [museumId], references: [id], onDelete: Restrict)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  auditLogs AdminAuditLog[]
+
+  @@index([museumId])
+}
+
+model Room {
+  id               String   @id @default(uuid())
+  legacyId         String?
+  museumId         String
+  museum           Museum   @relation(fields: [museumId], references: [id], onDelete: Restrict)
+  storyOrder       Int
+  title            String
+  roomOverviewText String   @db.Text
+  narrationScript  String   @db.Text
+  roomAudioUrl     String?
+  nextRoomId       String?
+  nextRoom         Room?    @relation("RoomSequence", fields: [nextRoomId], references: [id], onDelete: SetNull)
+  previousRooms    Room[]   @relation("RoomSequence")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  items       Item[]
+  chatAnswers ChatAnswer[]
+
+  @@unique([museumId, storyOrder])
+  @@unique([museumId, legacyId])
+  @@index([museumId])
+  @@index([nextRoomId])
+}
+
+model Item {
+  id               String   @id @default(uuid())
+  legacyId         String?
+  roomId           String
+  room             Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  name             String
+  shortDescription String
+  detailText       String   @db.Text
+  imageUrl         String?
+  displayOrder     Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  chatAnswers ChatAnswer[]
+
+  @@unique([roomId, legacyId])
+  @@index([roomId, displayOrder])
+}
+
+model AudioAsset {
+  id          String   @id @default(uuid())
+  contentHash String   @unique
+  url         String
+  voiceId     String
+  model       String
+  durationMs  Int?
+  byteSize    Int?
+  createdAt   DateTime @default(now())
+}
+
+model ChatAnswer {
+  id           String   @id @default(uuid())
+  roomId       String
+  room         Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  itemId       String?
+  item         Item?    @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  questionHash String   @unique
+  question     String   @db.Text
+  answer       String   @db.Text
+  audioHash    String?
+  createdAt    DateTime @default(now())
+
+  @@index([roomId])
+  @@index([createdAt])
+}
+
+model AdminAuditLog {
+  id          String     @id @default(uuid())
+  // Null means the system acted with no human behind it — the reconciler
+  // applying a payment, for example. SetNull rather than Cascade so the trail
+  // outlives the admin account that produced it.
+  adminUserId String?
+  adminUser   AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+  museumId    String?
+  museum      Museum?    @relation(fields: [museumId], references: [id], onDelete: SetNull)
+  action      String
+  entityType  String
+  entityId    String
+  before      Json?
+  after       Json?
+  createdAt   DateTime  @default(now())
+
+  @@index([museumId, createdAt])
+  @@index([adminUserId, createdAt])
+}
+
+// ── Billing models (dev3 §4) ─────────────────────────────────────────────────
+
+model TierPricing {
+  tier        SubscriptionTier @id
+  amountEtb   Decimal          @db.Decimal(10, 2)
+  periodDays  Int              @default(30)
+  displayName String
+  description String?
+  active      Boolean          @default(true)
+  updatedAt   DateTime         @updatedAt
+}
+
+model Payment {
+  id                 String           @id @default(uuid())
+  museumId           String
+  museum             Museum           @relation(fields: [museumId], references: [id], onDelete: Restrict)
+  tier               SubscriptionTier
+  amountEtb          Decimal          @db.Decimal(10, 2)
+  currency           String           @default("ETB")
+  txRef              String           @unique
+  chapaReference     String?
+  checkoutUrl        String?          @db.Text
+  status             PaymentStatus    @default(PENDING)
+  failureReason      String?
+  periodStart        DateTime?
+  periodEnd          DateTime?
+  initiatedByAdminId String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  paidAt             DateTime?
+
+  @@index([museumId, createdAt])
+  @@index([status, createdAt])
+}
+
+

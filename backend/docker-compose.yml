@@ -1,0 +1,58 @@
+name: adwa-backend
+
+services:
+  # ── primary database ────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: adwa
+      POSTGRES_PASSWORD: adwa
+      POSTGRES_DB: adwa
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adwa -d adwa"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── test database (tmpfs — fast, disposable) ────────────────────────────────
+  db-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: adwa
+      POSTGRES_PASSWORD: adwa
+      POSTGRES_DB: adwa_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adwa -d adwa_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── api (dev) ───────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      target: dev
+    volumes:
+      - .:/app
+      - /app/node_modules
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://adwa:adwa@db:5432/adwa
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+
+volumes:
+  db_data:
