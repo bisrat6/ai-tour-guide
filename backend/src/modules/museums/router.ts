@@ -8,6 +8,7 @@ import { requireRole } from '../../middleware/requireRole.js';
 import {
   addMuseumAdminRequestSchema,
   createMuseumRequestSchema,
+  listMuseumAdminsQuerySchema,
   listMuseumsQuerySchema,
   updateMuseumRequestSchema,
 } from './schemas.js';
@@ -15,6 +16,7 @@ import {
   addMuseumAdmin,
   createMuseum,
   getMuseum,
+  listMuseumAdmins,
   listMuseums,
   resolveMuseumIdFromParam,
   updateMuseum,
@@ -60,6 +62,20 @@ museumsRouter.patch(
     const body = updateMuseumRequestSchema.parse(req.body);
     if (!req.admin) throw ApiError.unauthenticated();
     res.json(await updateMuseum(requireParam(req, 'id'), body, req.admin));
+  }),
+);
+
+/**
+ * Scoped rather than SYSTEM_ADMIN-only, unlike the POST below. Seeing who can
+ * administer your own museum is not a privileged act, and the console's team
+ * page would be empty for the people it is for if it were.
+ */
+museumsRouter.get(
+  '/museums/:id/admins',
+  requireMuseumScope(resolveMuseumIdFromParam),
+  asyncHandler(async (req, res) => {
+    const query = listMuseumAdminsQuerySchema.parse(req.query);
+    res.json(await listMuseumAdmins(requireParam(req, 'id'), query));
   }),
 );
 

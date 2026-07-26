@@ -20,11 +20,17 @@ import {
   adminUserSchema,
   createMuseumRequestSchema,
   createMuseumResponseSchema,
+  listMuseumAdminsQuerySchema,
+  listMuseumAdminsResponseSchema,
   listMuseumsQuerySchema,
   listMuseumsResponseSchema,
   museumSchema,
   updateMuseumRequestSchema,
 } from '../src/modules/museums/schemas.js';
+import {
+  listAuditLogsQuerySchema,
+  listAuditLogsResponseSchema,
+} from '../src/modules/auditLogs/schemas.js';
 import {
   createRoomRequestSchema,
   deleteRoomQuerySchema,
@@ -186,6 +192,24 @@ registry.registerPath({
       content: { 'application/json': { schema: museumSchema } },
     },
     ...errorResponses(400, 401, 403, 404, 413),
+  },
+});
+
+registry.registerPath({
+  method: 'get',
+  path: '/admin/museums/{id}/admins',
+  tags: ['Museums'],
+  summary: 'List the museum\u2019s administrators',
+  description:
+    'Scoped rather than SYSTEM_ADMIN-only, unlike the POST on the same path: a museum admin may read its own museum\u2019s administrators. passwordHash is never returned, and there is no name or status column on an account.',
+  security: [{ [bearerAuth.name]: [] }],
+  request: { params: idParam, query: listMuseumAdminsQuerySchema },
+  responses: {
+    200: {
+      description: 'Paginated list of the museum\u2019s administrators.',
+      content: { 'application/json': { schema: listMuseumAdminsResponseSchema } },
+    },
+    ...errorResponses(400, 401, 403, 404),
   },
 });
 
@@ -377,6 +401,26 @@ registry.registerPath({
   responses: {
     204: { description: 'Item deleted.' },
     ...errorResponses(401, 403, 404),
+  },
+});
+
+// --- Audit log ------------------------------------------------------------
+
+registry.registerPath({
+  method: 'get',
+  path: '/admin/audit-logs',
+  tags: ['Audit'],
+  summary: 'Read the admin audit trail, newest first',
+  description:
+    'Every admin mutation writes a row here. A museum admin sees only its own museum whatever it asks for; museumId narrows a system admin to one tenant. The before/after snapshots each row holds are not returned.',
+  security: [{ [bearerAuth.name]: [] }],
+  request: { query: listAuditLogsQuerySchema },
+  responses: {
+    200: {
+      description: 'Paginated audit entries, newest first.',
+      content: { 'application/json': { schema: listAuditLogsResponseSchema } },
+    },
+    ...errorResponses(400, 401),
   },
 });
 

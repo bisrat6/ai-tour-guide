@@ -954,6 +954,79 @@
           }
         },
         {
+          "name": "GET /admin/museums/:id/admins — museum B's own admins",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Both of museum B\\'s admins are listed', function () {",
+                  "  pm.expect(body.data.length).to.be.at.least(2);",
+                  "  pm.expect(body).to.have.property('nextCursor');",
+                  "});",
+                  "",
+                  "pm.test('Every row belongs to museum B', function () {",
+                  "  body.data.forEach(function (row) {",
+                  "    pm.expect(row.museumId).to.eql(pm.environment.get('museumBId'));",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test('No password hash is anywhere in the response', function () {",
+                  "  pm.expect(pm.response.text()).to.not.include('$2b$');",
+                  "  body.data.forEach(function (row) {",
+                  "    pm.expect(row).to.not.have.property('passwordHash');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{systemToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums/{{museumBId}}/admins",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums", "{{museumBId}}", "admins"]
+            },
+            "description": "Reading the list is scoped rather than system-admin-only, unlike creating one — a museum admin can see who administers its own museum. There is no name and no status column on an account, so a console showing either is inventing it."
+          }
+        },
+        {
+          "name": "GET /admin/museums/:id/admins — museum A reading museum B (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 CROSS_TENANT_ACCESS', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('CROSS_TENANT_ACCESS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/museums/{{museumBId}}/admins",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "museums", "{{museumBId}}", "admins"]
+            },
+            "description": "Scoped means scoped. Knowing who administers another museum is exactly the kind of thing a tenant boundary exists to prevent."
+          }
+        },
+        {
           "name": "GET /admin/museums/:id — non-existent (404)",
           "event": [
             {
@@ -2635,6 +2708,160 @@
               "path": ["admin", "rooms", "{{roomBId}}"]
             },
             "description": "The very same token that was refused two requests ago now works, confirming suspension gates on live database state rather than invalidating tokens."
+          }
+        }
+      ]
+    },
+    {
+      "name": "05b Audit log",
+      "description": "Reads the trail that every request above has been writing.\n\nRun this after the museums, rooms, and items folders rather than on its own: the assertions below expect the mutations those folders performed to be there. The `before`/`after` snapshots each row holds are deliberately not returned.",
+      "item": [
+        {
+          "name": "GET /admin/audit-logs — museum A's own trail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('This run\\'s mutations are in the trail', function () {",
+                  "  pm.expect(body.data.length).to.be.above(0);",
+                  "});",
+                  "",
+                  "pm.test('Every entry belongs to museum A', function () {",
+                  "  body.data.forEach(function (row) {",
+                  "    pm.expect(row.museumId).to.eql(pm.environment.get('museumAId'));",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test('Newest first', function () {",
+                  "  const times = body.data.map(function (row) { return Date.parse(row.createdAt); });",
+                  "  const sorted = times.slice().sort(function (a, b) { return b - a; });",
+                  "  pm.expect(times).to.eql(sorted);",
+                  "});",
+                  "",
+                  "pm.test('The actor is named and the snapshots are withheld', function () {",
+                  "  const entry = body.data[0];",
+                  "  pm.expect(entry).to.have.property('adminEmail');",
+                  "  pm.expect(entry).to.have.property('museumName');",
+                  "  pm.expect(entry).to.not.have.property('before');",
+                  "  pm.expect(entry).to.not.have.property('after');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/audit-logs?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "audit-logs"],
+              "query": [{ "key": "limit", "value": "20" }]
+            },
+            "description": "A museum admin needs no query parameter: scope comes from the token, exactly as it does for rooms and items."
+          }
+        },
+        {
+          "name": "GET /admin/audit-logs — museum A asking for museum B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK, not 403', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('The museumId asked for is ignored, not honoured', function () {",
+                  "  pm.response.json().data.forEach(function (row) {",
+                  "    pm.expect(row.museumId).to.eql(pm.environment.get('museumAId'));",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{museumAToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/audit-logs?museumId={{museumBId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "audit-logs"],
+              "query": [{ "key": "museumId", "value": "{{museumBId}}" }]
+            },
+            "description": "The parameter is narrowing, not selecting. A museum admin supplying someone else's id gets its own rows rather than a refusal — the same choice /admin/billing/status makes."
+          }
+        },
+        {
+          "name": "GET /admin/audit-logs — system admin sees every museum",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Rows from more than one museum are present', function () {",
+                  "  const museums = new Set(body.data.map(function (row) { return row.museumId; }));",
+                  "  pm.expect(museums.size).to.be.above(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{systemToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/audit-logs?limit=100",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "audit-logs"],
+              "query": [{ "key": "limit", "value": "100" }]
+            },
+            "description": "Unscoped. This is the fleet-wide view the operator console's audit page renders."
+          }
+        },
+        {
+          "name": "GET /admin/audit-logs — limit past the cap (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 VALIDATION_ERROR', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{systemToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/admin/audit-logs?limit=500",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "audit-logs"],
+              "query": [{ "key": "limit", "value": "500" }]
+            },
+            "description": "Refused rather than quietly clamped to 200, so a caller asking for more than it can have finds out."
           }
         }
       ]

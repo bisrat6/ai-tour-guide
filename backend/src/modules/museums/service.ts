@@ -6,6 +6,7 @@ import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import type {
   AddMuseumAdminRequest,
+  AdminUserSummary,
   CreateMuseumRequest,
   Museum,
   UpdateMuseumRequest,
@@ -211,4 +212,49 @@ export async function addMuseumAdmin(
   });
 
   return { id: admin.id, email: admin.email, role: 'MUSEUM_ADMIN', museumId };
+}
+
+/**
+ * The museum's administrators. Scope is the router's job, as it is for every
+ * other `/museums/:id/...` route; this only refuses a museum that does not
+ * exist so the caller gets a 404 rather than an empty page.
+ *
+ * The select is explicit rather than a spread so passwordHash cannot reach the
+ * response by way of a future column.
+ */
+export async function listMuseumAdmins(
+  museumId: string,
+  query: { limit: number; cursor?: string },
+): Promise<{ data: AdminUserSummary[]; nextCursor: string | null }> {
+  await findMuseumRowOrThrow(museumId);
+
+  const rows = await prisma.adminUser.findMany({
+    where: { museumId },
+    take: query.limit + 1,
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      museumId: true,
+      lastLoginAt: true,
+      createdAt: true,
+    },
+  });
+
+  const hasMore = rows.length > query.limit;
+  const page = hasMore ? rows.slice(0, query.limit) : rows;
+
+  return {
+    data: page.map((row) => ({
+      id: row.id,
+      email: row.email,
+      role: row.role,
+      museumId: row.museumId,
+      lastLoginAt: row.lastLoginAt?.toISOString() ?? null,
+      createdAt: row.createdAt.toISOString(),
+    })),
+    nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null,
+  };
 }

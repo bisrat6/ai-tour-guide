@@ -263,6 +263,54 @@ components:
           type:
             - string
             - "null"
+    ListMuseumAdminsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUserSummary"
+        nextCursor:
+          type:
+            - string
+            - "null"
+      required:
+        - data
+        - nextCursor
+    AdminUserSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum:
+            - SYSTEM_ADMIN
+            - MUSEUM_ADMIN
+        museumId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        lastLoginAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - email
+        - role
+        - museumId
+        - lastLoginAt
+        - createdAt
     AdminUser:
       type: object
       properties:
@@ -590,6 +638,66 @@ components:
         displayOrder:
           type: integer
           minimum: 0
+    ListAuditLogsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLogEntry"
+        nextCursor:
+          type:
+            - string
+            - "null"
+      required:
+        - data
+        - nextCursor
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        action:
+          type: string
+          example: UPDATE
+        entityType:
+          type: string
+          example: Room
+        entityId:
+          type: string
+        museumId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        museumName:
+          type:
+            - string
+            - "null"
+        adminUserId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        adminEmail:
+          type:
+            - string
+            - "null"
+          format: email
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - action
+        - entityType
+        - entityId
+        - museumId
+        - museumName
+        - adminUserId
+        - adminEmail
+        - createdAt
   parameters: {}
 paths:
   /health:
@@ -848,6 +956,72 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
   /admin/museums/{id}/admins:
+    get:
+      tags:
+        - Museums
+      summary: List the museum’s administrators
+      description: "Scoped rather than SYSTEM_ADMIN-only, unlike the POST on the same
+        path: a museum admin may read its own museum’s administrators.
+        passwordHash is never returned, and there is no name or status column on
+        an account."
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: id
+          in: path
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+            description: Page size. Defaults to 50, capped at 200.
+          required: false
+          description: Page size. Defaults to 50, capped at 200.
+          name: limit
+          in: query
+        - schema:
+            type: string
+            description: Opaque cursor from a previous page.
+          required: false
+          description: Opaque cursor from a previous page.
+          name: cursor
+          in: query
+      responses:
+        "200":
+          description: Paginated list of the museum’s administrators.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListMuseumAdminsResponse"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Wrong role or wrong museum scope (FORBIDDEN / CROSS_TENANT_ACCESS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     post:
       tags:
         - Museums
@@ -1450,6 +1624,62 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Resource does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/audit-logs:
+    get:
+      tags:
+        - Audit
+      summary: Read the admin audit trail, newest first
+      description: Every admin mutation writes a row here. A museum admin sees only
+        its own museum whatever it asks for; museumId narrows a system admin to
+        one tenant. The before/after snapshots each row holds are not returned.
+      security:
+        - bearerAuth: []
+      parameters:
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+            description: Page size. Defaults to 50, capped at 200.
+          required: false
+          description: Page size. Defaults to 50, capped at 200.
+          name: limit
+          in: query
+        - schema:
+            type: string
+            description: Opaque cursor from a previous page.
+          required: false
+          description: Opaque cursor from a previous page.
+          name: cursor
+          in: query
+        - schema:
+            type: string
+            format: uuid
+            description: System admin only; a museum admin always sees its own museum.
+          required: false
+          description: System admin only; a museum admin always sees its own museum.
+          name: museumId
+          in: query
+      responses:
+        "200":
+          description: Paginated audit entries, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAuditLogsResponse"
+        "400":
+          description: Malformed or missing request fields (VALIDATION_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing, invalid, or expired token (UNAUTHENTICATED /
+            INVALID_CREDENTIALS).
           content:
             application/json:
               schema:

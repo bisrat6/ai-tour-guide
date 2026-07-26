@@ -78,7 +78,27 @@ export const adminUserSchema = z
   })
   .meta({ id: 'AdminUser' });
 
+/**
+ * The listing form, with the two timestamps a console needs to tell a working
+ * account from a dormant one. `passwordHash` is not on the schema at all, so
+ * there is no way to add it to the response by accident.
+ *
+ * There is no name and no status column — an account exists or it does not.
+ */
+export const adminUserSummarySchema = adminUserSchema
+  .extend({
+    lastLoginAt: z.iso.datetime().nullable(),
+    createdAt: z.iso.datetime(),
+  })
+  .meta({ id: 'AdminUserSummary' });
+
+export const listMuseumAdminsQuerySchema = paginationQuerySchema;
+export const listMuseumAdminsResponseSchema = paginatedResponseSchema(adminUserSummarySchema).meta({
+  id: 'ListMuseumAdminsResponse',
+});
+
 export type Museum = z.infer<typeof museumSchema>;
 export type CreateMuseumRequest = z.infer<typeof createMuseumRequestSchema>;
 export type UpdateMuseumRequest = z.infer<typeof updateMuseumRequestSchema>;
 export type AddMuseumAdminRequest = z.infer<typeof addMuseumAdminRequestSchema>;
+export type AdminUserSummary = z.infer<typeof adminUserSummarySchema>;

@@ -157,6 +157,40 @@ describe('D1-7 tenant isolation matrix (§17.2)', () => {
     expect(write.body.status).toBe('SUSPENDED');
   });
 
+  /**
+   * The two read-only routes added for the admin console. Both widen what a
+   * museum admin can see, so both belong in the matrix rather than only in
+   * their own suites.
+   */
+  it('Case 8b: museum A admin reads museum B\u2019s admin list -> 403', async () => {
+    const { tenantA, tenantB } = await seedScenario();
+    const res = await request(app)
+      .get(`/admin/museums/${tenantB.museum.id}/admins`)
+      .set(authHeader(tenantA.token));
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('CROSS_TENANT_ACCESS');
+  });
+
+  it('Case 8c: museum A admin asking the audit log for museum B sees only its own', async () => {
+    const { tenantA, tenantB, roomB1 } = await seedScenario();
+
+    // A real mutation on B, so there is something to leak.
+    await request(app)
+      .patch(`/admin/rooms/${roomB1.id}`)
+      .set(authHeader(tenantB.token))
+      .send({ title: 'B renamed' });
+
+    const res = await request(app)
+      .get('/admin/audit-logs')
+      .query({ museumId: tenantB.museum.id })
+      .set(authHeader(tenantA.token));
+
+    expect(res.status).toBe(200);
+    for (const entry of res.body.data as { museumId: string }[]) {
+      expect(entry.museumId).toBe(tenantA.museum.id);
+    }
+  });
+
   it("Case 9: suspended museum's room via GET /waypoint/:id -> 404", async () => {
     const { system, tenantB, roomB1 } = await seedScenario();
 

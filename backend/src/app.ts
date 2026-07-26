@@ -5,6 +5,7 @@ import { env } from './config/env.js';
 import { ApiError } from './lib/errors.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestId } from './middleware/requestId.js';
+import { auditLogsRouter } from './modules/auditLogs/router.js';
 import { authRouter } from './modules/auth/router.js';
 import { billingRouter } from './modules/billing/router.js';
 import { chatRouter } from './modules/chat/router.js';
@@ -39,6 +40,7 @@ export function createApp(): Express {
   app.use('/admin', roomsRouter);
   app.use('/admin', itemsRouter);
   app.use('/admin', billingRouter);
+  app.use('/admin', auditLogsRouter);
   // Visitor-facing, so mounted at the root rather than under /admin.
   app.use(ticketsRouter);
   app.use(waypointsRouter);
