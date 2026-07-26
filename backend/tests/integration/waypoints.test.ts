@@ -40,6 +40,10 @@ describe('visitor waypoints', () => {
       // The script is for TTS, not for the client, and museumId is platform state.
       expect(res.body.museumId).toBeUndefined();
       expect(res.body.narrationScript).toBeUndefined();
+      // museumScope stands in for it: enough for the client to group rooms by
+      // museum for its ticket cache, without being the id itself.
+      expect(res.body.museumScope).toEqual(expect.any(String));
+      expect(res.body.museumScope).not.toBe(room1.museumId);
       expect(res.body.items).toHaveLength(2);
       // displayOrder decides the sequence, so this is an assertion about order.
       expect(res.body.items.map((item: { id: string }) => item.id)).toEqual([

@@ -2,8 +2,9 @@
  * Resilience wrapper for every outbound provider call (dev3 §7).
  *
  * - Per-call timeout via AbortSignal.
- * - One retry on timeout or 5xx, never on 4xx: a bad request retried is just a
- *   bad request twice.
+ * - One retry on timeout, 5xx, or 429. Other 4xx are not retried: a bad request
+ *   retried is just a bad request twice. 429 waits longer than 5xx because the
+ *   vendor's free-tier windows are typically tens of seconds, not 500ms.
  * - Circuit breaker per vendor+operation: opens after 5 consecutive failures,
  *   half-opens after 30s, so a dead vendor stops costing every caller a
  *   timeout.
@@ -101,7 +102,9 @@ export async function providerCall<T>(opts: ProviderCallOptions<T>): Promise<T> 
         (err as Error).message?.includes('timeout') === true ||
         (err as { code?: string }).code === 'ABORT_ERR';
       const statusCode = (err as { statusCode?: number }).statusCode;
-      const isRetryable = isTimeout || (statusCode !== undefined && statusCode >= 500);
+      const isRateLimited = statusCode === 429;
+      const isRetryable =
+        isTimeout || isRateLimited || (statusCode !== undefined && statusCode >= 500);
 
       logger.warn(
         { requestId, provider: name, operation, attempt, durationMs: Date.now() - start, err },
@@ -109,14 +112,21 @@ export async function providerCall<T>(opts: ProviderCallOptions<T>): Promise<T> 
       );
 
       if (isRetryable && attempt === 1) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        // Free-tier Gemini asks for ~20s; a 500ms retry just burns the next slot.
+        const delayMs = isRateLimited ? 22_000 : 500;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
         return run();
       }
 
-      state.failures += 1;
-      if (state.failures >= BREAKER_THRESHOLD) {
-        state.openedAt = Date.now();
-        logger.error({ provider: name, operation }, 'Circuit breaker opened');
+      // A rate limit is the vendor asking us to wait, not a dead vendor. Counting
+      // it toward the breaker would open the circuit for every visitor for 30s
+      // after a burst of legitimate chat traffic on the free tier.
+      if (!isRateLimited) {
+        state.failures += 1;
+        if (state.failures >= BREAKER_THRESHOLD) {
+          state.openedAt = Date.now();
+          logger.error({ provider: name, operation }, 'Circuit breaker opened');
+        }
       }
 
       throw err;
