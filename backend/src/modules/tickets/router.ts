@@ -19,7 +19,16 @@ const perMuseumLimit = createRateLimiter({
   windowMs: 60_000,
   max: 30,
   message: 'Too many ticket checks for this museum. Try again shortly.',
-  keyGenerator: (req) => `museum:${(req.body as { museumId?: string }).museumId ?? 'unknown'}`,
+  // Buckets on whichever identifier the caller sent. Resolving a waypoint to
+  // its museum first would mean a database round trip before the limiter, so a
+  // room-level bucket is used instead: narrower than per-museum, and still one
+  // bucket per caller-supplied target rather than a shared 'unknown'.
+  keyGenerator: (req) => {
+    const body = req.body as { museumId?: string; waypointId?: string };
+    if (body.museumId !== undefined) return `museum:${body.museumId}`;
+    if (body.waypointId !== undefined) return `waypoint:${body.waypointId}`;
+    return 'ticket-target:unknown';
+  },
 });
 
 ticketsRouter.post(
@@ -28,7 +37,11 @@ ticketsRouter.post(
   perMuseumLimit,
   asyncHandler(async (req, res) => {
     const body = validateTicketRequestSchema.parse(req.body);
-    res.json(await validateTicket(body.museumId, body.ticketCode, req.requestId));
+    const target =
+      body.museumId !== undefined
+        ? { museumId: body.museumId }
+        : { waypointId: body.waypointId as string };
+    res.json(await validateTicket(target, body.ticketCode, req.requestId));
   }),
 );
 

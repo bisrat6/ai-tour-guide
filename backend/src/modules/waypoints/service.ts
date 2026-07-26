@@ -1,5 +1,6 @@
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
+import { museumScopeFor } from '../../shared/museumScope.js';
 
 export interface WaypointItemResponse {
   id: string;
@@ -11,6 +12,12 @@ export interface WaypointItemResponse {
 
 export interface WaypointResponse {
   id: string;
+  /**
+   * Opaque grouping key, not `Museum.id`. A QR code carries only a room id, so
+   * this is how the visitor app recognises two rooms as one museum and reuses a
+   * single 24-hour ticket grant across them.
+   */
+  museumScope: string;
   storyOrder: number;
   title: string;
   roomOverviewText: string;
@@ -48,6 +55,7 @@ export async function getWaypoint(id: string): Promise<WaypointResponse> {
 
   return {
     id: room.id,
+    museumScope: museumScopeFor(room.museumId),
     storyOrder: room.storyOrder,
     title: room.title,
     roomOverviewText: room.roomOverviewText,

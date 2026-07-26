@@ -12,28 +12,28 @@
         "name": "The Code of Hammurabi",
         "short_description": "One of the oldest and most complete deciphered legal codes in the world.",
         "detail_text": "Carved onto a massive, seven-and-a-half-foot-tall black diorite stele around 1750 BC, the Code of Hammurabi is one of the earliest and most complete written legal codes in human history. Discovered in 1901 by French archaeologist Jacques de Morgan in Susa (modern-day Iran), where it had been taken as war booty by the Elamites, the stele features 282 laws written in Akkadian cuneiform. These laws deal with contracts, liability, family law, and harsh retributive justice—most famously, the lex talionis, or the 'an eye for an eye, a tooth for a tooth' principle. At the very top of the stele, a beautifully carved bas-relief depicts King Hammurabi receiving the laws directly from Shamash, the Mesopotamian god of justice, visually cementing the divine right and absolute authority of the Babylonian king.",
-        "image_url": "https://placehold.co/400x300/e0e0e0/000000?text=Code+of+Hammurabi"
+        "image_url": "https://upload.wikimedia.org/wikipedia/commons/d/dc/Code_of_Hammurabi.jpg"
       },
       {
         "id": "louvre_1_sphinx",
         "name": "Great Sphinx of Tanis",
         "short_description": "One of the largest Egyptian sphinxes exhibited outside of Egypt.",
         "detail_text": "Dating back to the Old Kingdom (around 2600 BC), the Great Sphinx of Tanis is a masterful piece of ancient Egyptian sculpture carved from a single, massive block of solid red granite. Combining the powerful, muscular body of a recumbent lion with the serene, idealized head of an Egyptian pharaoh, the sphinx was a potent symbol of absolute royal power and divine protection, intended to guard temple entrances. It was discovered in the ruins of the Temple of Amun at Tanis in 1825 by Auguste Mariette. Interestingly, the statue bears the usurped inscriptions of multiple subsequent pharaohs—including Amenemhat II, Merneptah, and Shoshenq I—who later chiseled their own names into the stone to claim the magnificent monument as their own, a common and accepted practice in ancient Egyptian dynastic history.",
-        "image_url": "https://placehold.co/400x300/e0e0e0/000000?text=Sphinx+of+Tanis"
+        "image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Grand%20Sphinx%20de%20Tanis.jpg?width=960"
       },
       {
         "id": "louvre_1_scribe",
         "name": "The Seated Scribe",
         "short_description": "An incredibly lifelike ancient Egyptian sculpture known for its realistic crystal eyes.",
         "detail_text": "Created during the 4th or 5th Dynasty (around 2600–2350 BC) and discovered at the necropolis of Saqqara in 1850 by Auguste Mariette, The Seated Scribe is one of the Louvre's most captivating masterpieces of Egyptian art. Unlike the highly idealized, rigid, and muscular statues of pharaohs, this painted limestone figure is shockingly realistic and individualistic. The scribe is depicted seated cross-legged with a papyrus scroll on his lap, sporting a slightly flabby torso—a sign of his high status, wealth, and a life free from hard physical labor. His most striking feature, however, is his eyes. They are intricately inlaid with white magnesite, rock crystal for the pupils, and a copper-arsenic alloy for the outlining, giving him an intensely alert, lifelike gaze that remarkably catches the light and seems to follow the viewer across the room.",
-        "image_url": "https://placehold.co/400x300/e0e0e0/000000?text=Seated+Scribe"
+        "image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Le%20Scribe%20accroupi.jpg?width=960"
       },
       {
         "id": "louvre_1_bulls",
         "name": "Winged Bulls of Susa",
         "short_description": "Massive glazed brick reliefs from the palace of Darius the Great.",
         "detail_text": "These magnificent, vibrant glazed brick panels were created around 510 BC during the Achaemenid Empire to decorate the massive royal palace of King Darius I at Susa (modern-day Iran). Discovered by French archaeologists Marcel and Jane Dieulafoy in the 1880s, the bricks depict monumental, mythological creatures known as lamassu—winged bulls with human or divine features. These served as powerful apotropaic symbols meant to ward off evil spirits, intimidate foreign diplomats, and protect the king's grand audience hall (the Apadana). The brilliant use of vibrant blue, yellow, and green glazes demonstrates the highly advanced chemical and artistic mastery of ancient Persian craftsmen, and the imposing scale reflects the immense wealth and absolute, centralized power of the Persian Empire at its absolute zenith.",
-        "image_url": "https://placehold.co/400x300/e0e0e0/000000?text=Winged+Bulls"
+        "image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Frise%20des%20Lions%20Palais%20de%20Darius.jpg?width=960"
       }
     ]
   },
@@ -50,21 +50,21 @@
         "name": "Venus de Milo",
         "short_description": "The iconic, armless ancient Greek statue representing the classical ideal of beauty.",
         "detail_text": "Discovered purely by chance by a peasant named Yorgos Kentrotas on the Greek island of Milos in 1820, the Venus de Milo (or Aphrodite of Milos) was sculpted around 100 BC. Acquired shortly after by French naval officer Olivier Voutier, she stands over six feet tall and is carved from two blocks of high-quality Parian marble. She represents the classical ideal of female beauty. The enduring mystery of her missing arms has only amplified her worldwide fame; scholars continuously debate what she originally held, with theories ranging from a shiny apple (referencing the Judgment of Paris) to a shield, or even a spindle. She masterfully blends the serene, perfectly proportioned features of the Classical period (5th century BC) with the more dynamic, twisting, and sensual realism of the Hellenistic era.",
-        "image_url": "https://placehold.co/400x300/e0e0e0/000000?text=Venus+de+Milo"
+        "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/Venus_de_Milo_Louvre_Ma399_n4.jpg/960px-Venus_de_Milo_Louvre_Ma399_n4.jpg"
       },
       {
         "id": "louvre_2_winged",
         "name": "Winged Victory of Samothrace",
         "short_description": "A breathtaking Hellenistic sculpture of the goddess Nike alighting on a ship's prow.",
         "detail_text": "Dating to roughly 190 BC, this monumental marble sculpture depicts Nike, the Greek goddess of victory. Discovered in pieces in 1863 by French diplomat Charles Champoiseau, it was originally erected high on a cliffside pedestal overlooking the Sanctuary of the Great Gods on the island of Samothrace. It was likely commissioned to commemorate a major naval victory, perhaps the Battle of Cos. The statue stands on a base carved from dark Rhodian marble shaped like the prow of a warship. Despite lacking a head and arms, the statue is universally celebrated for its incredible sense of dramatic motion, power, and triumph. The sculptor brilliantly captured the illusion of a fierce sea breeze whipping the wet, clinging drapery of the goddess's tunic violently against her body as she gracefully touches down.",
-        "image_url": "https://placehold.co/400x300/e0e0e0/000000?text=Winged+Victory"
+        "image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Victoire%20de%20Samothrace%20-%20Musee%20du%20Louvre.jpg?width=960"
       },
       {
         "id": "louvre_2_gladiator",
         "name": "Borghese Gladiator",
         "short_description": "A dynamic, life-size Hellenistic marble sculpture of a warrior locked in combat.",
         "detail_text": "Sculpted by Agasias of Ephesus around 100 BC, the Borghese Gladiator is a masterpiece of intense anatomical study and dynamic tension. Found at Nettuno, Italy, before 1611, it became a centerpiece of the famous Borghese collection in Rome before being purchased by Napoleon Bonaparte in 1807. Contrary to its popular name, it does not represent a Roman gladiator—who did not exist in Greece at the time—but rather a heroic Greek warrior locked in mortal combat. He is thrusting his invisible shield upward to defend against a mounted opponent striking from above. The sculptor’s profound understanding of human musculature is evident in the warrior’s intensely strained calves, rippling torso, and hyper-extended pose, perfectly capturing a fleeting, high-adrenaline moment of violent action.",
-        "image_url": "https://placehold.co/400x300/e0e0e0/000000?text=Borghese+Gladiator"
+        "image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Gladiateur%20Borgh%C3%A8se.jpg?width=960"
       }
     ]
   },
@@ -81,21 +81,21 @@
         "name": "Mona Lisa",
         "short_description": "Leonardo da Vinci's universally recognized portrait, famous for its enigmatic smile and theft.",
         "detail_text": "Painted by the ultimate Renaissance polymath, Leonardo da Vinci, between 1503 and 1519, the Mona Lisa is arguably the most famous and heavily insured painting in the world. Acquired by King Francis I of France, it is believed to be a portrait of Lisa Gherardini, the wife of a wealthy Florentine silk merchant, Francesco del Giocondo. Leonardo utilized his groundbreaking 'sfumato' technique—a subtle, smoky blending of colors and tones without harsh outlines—to give her face and the surreal, winding landscape behind her a remarkably lifelike, atmospheric quality. The painting's global superstar status was actually cemented in 1911 when it was brazenly stolen from the Louvre by Vincenzo Peruggia, an Italian handyman. Today, her enigmatic expression, which seems to shift playfully as you look at her, continues to captivate millions.",
-        "image_url": "https://placehold.co/400x300/e0e0e0/000000?text=Mona+Lisa"
+        "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg/960px-Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg"
       },
       {
         "id": "louvre_3_cana",
         "name": "The Wedding at Cana",
         "short_description": "The largest painting in the Louvre, a massive and vibrant biblical feast by Paolo Veronese.",
         "detail_text": "Painted in 1563 by the Venetian master Paolo Veronese, this colossal canvas measures nearly 22 by 32 feet and hangs directly opposite the Mona Lisa. It was brutally looted by Napoleon's troops from the refectory of the San Giorgio Maggiore monastery in Venice in 1797, famously sawn in half to facilitate its transport to Paris. It depicts the biblical story of the Wedding at Cana, where Jesus performed his first miracle by turning water into wine. However, Veronese radically transposed the sacred event into the setting of a lavish, contemporary 16th-century Venetian banquet. The painting features over 130 highly detailed figures, including disguised portraits of European monarchs (like Francis I and Suleiman the Magnificent), and even a central quartet of musicians depicting Veronese, Titian, and Tintoretto themselves.",
-        "image_url": "https://placehold.co/400x300/e0e0e0/000000?text=Wedding+at+Cana"
+        "image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Paolo%20Veronese%20-%20The%20Wedding%20at%20Cana%20-%20Google%20Art%20Project.jpg?width=960"
       },
       {
         "id": "louvre_3_virgin",
         "name": "Virgin of the Rocks",
         "short_description": "A mysterious and highly influential religious composition by Leonardo da Vinci.",
         "detail_text": "Commissioned by the Confraternity of the Immaculate Conception in Milan and created by Leonardo da Vinci around 1483-1486, this painting is a sheer masterpiece of Renaissance composition and lighting. It depicts the Virgin Mary, the infant Jesus, a young John the Baptist, and an angel set against a dark, primeval, and geologically accurate rocky landscape. Leonardo's masterful use of 'chiaroscuro'—the strong contrast between the dark, shadowy background and the brightly lit, softly modeled skin of the figures—creates a profound sense of depth and spiritual mystery. The complex, intertwining hand gestures and intersecting gazes of the four figures created a revolutionary pyramid composition that abandoned stiff, traditional halos and directly influenced generations of artists.",
-        "image_url": "https://placehold.co/400x300/e0e0e0/000000?text=Virgin+of+the+Rocks"
+        "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/Leonardo_da_Vinci_-_Virgin_of_the_Rocks_%28Louvre%29.jpg/960px-Leonardo_da_Vinci_-_Virgin_of_the_Rocks_%28Louvre%29.jpg"
       }
     ]
   },
@@ -112,21 +112,21 @@
         "name": "Liberty Leading the People",
         "short_description": "Eugène Delacroix's passionate Romantic masterpiece commemorating the July Revolution of 1830.",
         "detail_text": "Painted by Eugène Delacroix in the autumn of 1830, this iconic canvas has become the universal symbol of the French Republic, democratic revolution, and human rights. It commemorates the July Revolution, a bloody three-day uprising that toppled the Bourbon King Charles X. The central figure is 'Marianne,' the allegorical personification of Liberty, wearing the Phrygian cap of freed slaves. Bare-breasted and holding the tricolor flag and a musket with a bayonet, she surges forward over the barricades and the bodies of the fallen, leading a diverse cross-section of the French populace—a top-hatted bourgeois intellectual (often debated to be a self-portrait of Delacroix), a young, pistol-wielding street urchin (who inspired Gavroche in Les Misérables), and a factory worker. The painting was deemed so inflammatory and politically dangerous that the French government hid it from public view for over a decade.",
-        "image_url": "https://placehold.co/400x300/e0e0e0/000000?text=Liberty+Leading"
+        "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Eug%C3%A8ne_Delacroix_-_La_libert%C3%A9_guidant_le_peuple.jpg/960px-Eug%C3%A8ne_Delacroix_-_La_libert%C3%A9_guidant_le_peuple.jpg"
       },
       {
         "id": "louvre_4_napoleon",
         "name": "The Coronation of Napoleon",
         "short_description": "A massive, meticulously detailed piece of political propaganda by Jacques-Louis David.",
         "detail_text": "Commissioned in 1804 and completed in 1807 by Jacques-Louis David, the official painter to the Empire, this colossal Neoclassical painting (nearly 33 feet wide) documents the lavish coronation of Napoleon Bonaparte at Notre-Dame Cathedral in Paris. Instead of showing the controversial moment when Napoleon audaciously took the crown from Pope Pius VII and crowned himself, David cleverly depicted the moment immediately after: Napoleon, already crowned and standing tall, raises a second crown to place it on the head of his kneeling wife, Empress Joséphine. The painting is a masterclass in political propaganda; David meticulously arranged over a hundred identifiable figures, altering reality to please the Emperor. For instance, he painted Napoleon's mother, Letizia Bonaparte, prominently in the center, even though she had boycotted the ceremony in protest of Napoleon's marriage to Joséphine.",
-        "image_url": "https://placehold.co/400x300/e0e0e0/000000?text=Coronation+of+Napoleon"
+        "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Jacques-Louis_David_-_The_Coronation_of_Napoleon_%281805-1807%29.jpg/960px-Jacques-Louis_David_-_The_Coronation_of_Napoleon_%281805-1807%29.jpg"
       },
       {
         "id": "louvre_4_raft",
         "name": "The Raft of the Medusa",
         "short_description": "Théodore Géricault's horrifying and groundbreaking depiction of a real-life maritime tragedy.",
         "detail_text": "Painted in 1818-1819 by Théodore Géricault, this massive canvas shocked contemporary audiences, deeply embarrassed the restored French monarchy, and broke the rules of traditional history painting. It depicts the harrowing aftermath of the real-life 1816 wreck of the French naval frigate Méduse off the coast of Senegal. Due to the sheer incompetence of an aristocrat captain, 147 people were set adrift on a hastily built, overcrowded raft; only 15 survived after enduring 13 days of starvation, dehydration, madness, and horrific cannibalism. Géricault went to obsessive lengths for realism: he interviewed the survivors, built a scale model of the raft, and even brought severed limbs and heads from local morgues into his studio to study the color of decaying flesh. The painting captures the agonizing moment when the desperate survivors frantically wave at a tiny rescue ship on the distant horizon, launching the visceral Romantic movement in France.",
-        "image_url": "https://placehold.co/400x300/e0e0e0/000000?text=Raft+of+Medusa"
+        "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Th%C3%A9odore_G%C3%A9ricault_-_Le_Radeau_de_la_M%C3%A9duse.jpg/960px-Th%C3%A9odore_G%C3%A9ricault_-_Le_Radeau_de_la_M%C3%A9duse.jpg"
       }
     ]
   }

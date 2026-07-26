@@ -9,7 +9,8 @@ import { prisma } from '../../src/lib/prisma.js';
 import { ssrfGuard } from '../../src/lib/ssrfGuard.js';
 import { resetBreakersForTests } from '../../src/providers/resilience.js';
 import { fakeTicket } from '../../src/providers/ticketing/fake.js';
-import { ensureTestSchema, resetDatabase, seedMuseum } from '../helpers/db.js';
+import { museumScopeFor } from '../../src/shared/museumScope.js';
+import { ensureTestSchema, resetDatabase, seedMuseum, seedRoom } from '../helpers/db.js';
 
 const VENDOR_URL = 'https://tickets.example.com/validate';
 
@@ -42,7 +43,11 @@ describe('POST /tickets/validate', () => {
       .send({ museumId: museum.id, ticketCode: 'ANYTHING' });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ valid: true, ticketRequired: false });
+    expect(res.body).toEqual({
+      valid: true,
+      ticketRequired: false,
+      museumScope: museumScopeFor(museum.id),
+    });
     expect(fakeTicket.getCallCount()).toBe(0);
   });
 
@@ -59,7 +64,11 @@ describe('POST /tickets/validate', () => {
       .send({ museumId: museum.id, ticketCode: 'DEMO-1234' });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ valid: true, ticketRequired: true });
+    expect(res.body).toEqual({
+      valid: true,
+      ticketRequired: true,
+      museumScope: museumScopeFor(museum.id),
+    });
     expect(fakeTicket.getCallCount()).toBe(1);
   });
 
@@ -76,7 +85,11 @@ describe('POST /tickets/validate', () => {
       .send({ museumId: museum.id, ticketCode: 'NOPE' });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ valid: false, ticketRequired: true });
+    expect(res.body).toEqual({
+      valid: false,
+      ticketRequired: true,
+      museumScope: museumScopeFor(museum.id),
+    });
   });
 
   // The important property: a broken vendor must never mean free admission.
@@ -125,6 +138,114 @@ describe('POST /tickets/validate', () => {
     const malformed = await request(app).post('/tickets/validate').send({ ticketCode: 'X' });
     expect(malformed.status).toBe(400);
     expect(malformed.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  // The visitor app never holds a museum id — a QR code carries a room id, and
+  // GET /waypoint/:id withholds the museum on purpose. These cover that path.
+  describe('identified by waypointId', () => {
+    it('resolves the museum from the scanned room', async () => {
+      const museum = await seedMuseum({
+        name: 'Gated By Room',
+        slug: 'gated-by-room',
+        ticketValidationUrl: VENDOR_URL,
+      });
+      const room = await seedRoom({
+        museumId: museum.id,
+        legacyId: 'room_1',
+        storyOrder: 1,
+        title: 'The Gathering Storm',
+      });
+      fakeTicket.setMode('valid');
+
+      const res = await request(app)
+        .post('/tickets/validate')
+        .send({ waypointId: room.id, ticketCode: 'DEMO-1234' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        valid: true,
+        ticketRequired: true,
+        museumScope: museumScopeFor(museum.id),
+      });
+    });
+
+    it('returns the same scope as the waypoint, for every room of a museum', async () => {
+      const museum = await seedMuseum({
+        name: 'Two Rooms',
+        slug: 'two-rooms',
+        ticketValidationUrl: null,
+      });
+      const first = await seedRoom({
+        museumId: museum.id,
+        legacyId: 'room_1',
+        storyOrder: 1,
+        title: 'First',
+      });
+      const second = await seedRoom({
+        museumId: museum.id,
+        legacyId: 'room_2',
+        storyOrder: 2,
+        title: 'Second',
+      });
+
+      const waypoint = await request(app).get(`/waypoint/${first.id}`);
+      const ticket = await request(app)
+        .post('/tickets/validate')
+        .send({ waypointId: second.id, ticketCode: 'X' });
+
+      // One grant has to cover the whole museum, so a scope read off any room
+      // must match the one every other surface reports.
+      expect(waypoint.body.museumScope).toBe(ticket.body.museumScope);
+      // And it must not be the museum's actual id.
+      expect(ticket.body.museumScope).not.toBe(museum.id);
+    });
+
+    it('gives different museums different scopes', async () => {
+      const [a, b] = await Promise.all([
+        seedMuseum({ name: 'A', slug: 'scope-a', ticketValidationUrl: null }),
+        seedMuseum({ name: 'B', slug: 'scope-b', ticketValidationUrl: null }),
+      ]);
+
+      const [resA, resB] = await Promise.all([
+        request(app).post('/tickets/validate').send({ museumId: a.id, ticketCode: 'X' }),
+        request(app).post('/tickets/validate').send({ museumId: b.id, ticketCode: 'X' }),
+      ]);
+
+      expect(resA.body.museumScope).not.toBe(resB.body.museumScope);
+    });
+
+    it('404s an unknown room', async () => {
+      const res = await request(app)
+        .post('/tickets/validate')
+        .send({ waypointId: '00000000-0000-4000-8000-000000000000', ticketCode: 'X' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('NOT_FOUND');
+    });
+
+    it('400s when both or neither identifier is supplied', async () => {
+      const museum = await seedMuseum({
+        name: 'Ambiguous',
+        slug: 'ambiguous',
+        ticketValidationUrl: null,
+      });
+      const room = await seedRoom({
+        museumId: museum.id,
+        legacyId: 'room_1',
+        storyOrder: 1,
+        title: 'Only Room',
+      });
+
+      const both = await request(app)
+        .post('/tickets/validate')
+        .send({ museumId: museum.id, waypointId: room.id, ticketCode: 'X' });
+      expect(both.status).toBe(400);
+      expect(both.body.error.code).toBe('VALIDATION_ERROR');
+
+      const neither = await request(app).post('/tickets/validate').send({ ticketCode: 'X' });
+      expect(neither.status).toBe(400);
+      expect(neither.body.error.code).toBe('VALIDATION_ERROR');
+    });
   });
 });
 

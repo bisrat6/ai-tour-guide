@@ -316,6 +316,11 @@ export async function answerChat(input: {
     }
     if (err instanceof UpstreamFailureError) {
       logger.error({ roomId: room.id, err }, 'chat llm call failed');
+      if (err.statusCode === 429) {
+        throw ApiError.rateLimited(
+          'The guide is busy right now. Please wait a moment and try again.',
+        );
+      }
       throw ApiError.upstreamFailure('The guide could not answer right now.');
     }
     throw err;

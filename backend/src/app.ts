@@ -22,7 +22,15 @@ export function createApp(): Express {
   app.disable('x-powered-by');
 
   app.use(requestId);
-  app.use(helmet());
+  // cross-origin: visitor audio is loaded by the Flutter web/app origin via
+  // <audio>/just_audio. Helmet's default CORP of "same-origin" blocks that
+  // cross-origin media fetch even when CORS allows the JSON APIs, so chat
+  // answers and room narration fail to play in the browser.
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
   // Visitor routes (§9) are open; /admin/* gets the restricted CORS policy
   // below (§7.4).
   app.use(cors());
