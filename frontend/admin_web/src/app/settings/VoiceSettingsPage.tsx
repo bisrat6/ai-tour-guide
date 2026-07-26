@@ -1,11 +1,22 @@
 import { useEffect, useState, type ReactElement } from 'react'
 
-import { Button, Field, IntegrationPendingPanel, Select, TextArea, TextInput, useToast } from '../../kit/index.ts'
+import {
+  Button,
+  Field,
+  IntegrationPendingPanel,
+  Select,
+  StateBlock,
+  TextArea,
+  TextInput,
+  useToast,
+} from '../../kit/index.ts'
+import { DemoDataNote } from '../common/DemoDataNote.tsx'
 import { TenantSettingsLayout } from './TenantSettingsLayout.tsx'
 import { useTenantSettingsStore, type VoiceSettingsForm } from './settingsStore.ts'
 import styles from './TenantSettingsLayout.module.css'
 
-const VOICE_OPTIONS = [
+/** Placeholder names, used only when no API is configured. */
+const DEMO_VOICE_OPTIONS = [
   { value: 'voice-ethiopic-clarity', label: 'Ethiopic Clarity' },
   { value: 'voice-heritage-guide', label: 'Heritage Guide' },
   { value: 'voice-museum-warm', label: 'Museum Warm' },
@@ -13,16 +24,50 @@ const VOICE_OPTIONS = [
 
 export function VoiceSettingsPage(): ReactElement {
   const { show } = useToast()
-  const { value, setVoice } = useTenantSettingsStore()
+  const { value, setVoice, status, loadError, isLive } = useTenantSettingsStore()
   const [draft, setDraft] = useState<VoiceSettingsForm>(value.voice)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     setDraft(value.voice)
   }, [value.voice])
 
-  function save(): void {
-    setVoice(draft)
-    show({ tone: 'success', message: 'Voice settings saved.' })
+  async function save(): Promise<void> {
+    if (saving) return
+    setSaving(true)
+    try {
+      const result = await setVoice(draft)
+      if (!result.ok) {
+        show({ tone: 'danger', message: result.message })
+        return
+      }
+      show({ tone: 'success', message: 'Voice settings saved.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (status !== 'ready') {
+    return (
+      <TenantSettingsLayout
+        section="voice"
+        title="Default voice"
+        description="Set tenant defaults for generated narration voice characteristics."
+      >
+        <StateBlock
+          size="region"
+          state={
+            status === 'loading'
+              ? { kind: 'loading', label: 'Loading voice settings' }
+              : {
+                  kind: 'failure',
+                  title: 'Could not load these settings',
+                  body: loadError ?? 'The server did not answer.',
+                }
+          }
+        />
+      </TenantSettingsLayout>
+    )
   }
 
   return (
@@ -32,16 +77,37 @@ export function VoiceSettingsPage(): ReactElement {
       description="Set tenant defaults for generated narration voice characteristics."
     >
       <div className={styles.formGrid}>
-        <Field id="settings-voice-default" label="Default voice">
-          {(control) => (
-            <Select
-              {...control}
-              value={draft.defaultVoiceId}
-              onChange={(defaultVoiceId) => setDraft((current) => ({ ...current, defaultVoiceId }))}
-              options={VOICE_OPTIONS}
-            />
-          )}
-        </Field>
+        {/*
+          A live default voice is an ElevenLabs voice id, not a name from a list
+          this console invents, so it is typed rather than chosen.
+        */}
+        {isLive ? (
+          <Field
+            id="settings-voice-default"
+            label="Default voice id"
+            hint="The ElevenLabs voice used for this museum's narration. Leave blank to use the server default."
+          >
+            {(control) => (
+              <TextInput
+                {...control}
+                value={draft.defaultVoiceId}
+                onChange={(defaultVoiceId) => setDraft((current) => ({ ...current, defaultVoiceId }))}
+                placeholder="21m00Tcm4TlvDq8ikWAM"
+              />
+            )}
+          </Field>
+        ) : (
+          <Field id="settings-voice-default" label="Default voice">
+            {(control) => (
+              <Select
+                {...control}
+                value={draft.defaultVoiceId}
+                onChange={(defaultVoiceId) => setDraft((current) => ({ ...current, defaultVoiceId }))}
+                options={DEMO_VOICE_OPTIONS}
+              />
+            )}
+          </Field>
+        )}
 
         <Field id="settings-voice-rate" label="Speaking rate">
           {(control) => (
@@ -59,29 +125,40 @@ export function VoiceSettingsPage(): ReactElement {
               {...control}
               rows={4}
               value={draft.pronunciationHints}
-              onChange={(pronunciationHints) => setDraft((current) => ({ ...current, pronunciationHints }))}
+              onChange={(pronunciationHints) =>
+                setDraft((current) => ({ ...current, pronunciationHints }))
+              }
             />
           )}
         </Field>
 
+        {isLive ? (
+          <DemoDataNote>
+            Only the voice id reaches the server. Speaking rate and pronunciation hints are kept in
+            this browser.
+          </DemoDataNote>
+        ) : null}
+
         <IntegrationPendingPanel
-          dependency="Voice synthesis provider"
-          body="Voice preview generation is disabled until provider credentials and stream endpoints are wired."
-          stillUsable="Default voice choices and speaking-rate preferences are still editable."
+          dependency="Voice preview"
+          body="Narration audio is generated by a command-line job rather than from this console, so there is nothing to preview here yet."
+          stillUsable="The default voice saves and is used the next time narration is generated."
           variant="inline"
         />
 
         <Button
           tone="secondary"
           disabled
-          disabledReason="Integration pending: voice preview requires provider wiring."
+          disabledReason="Integration pending: there is no HTTP route that synthesises a preview."
         >
           Preview default voice
         </Button>
       </div>
 
       <div className={styles.rowActions}>
-        <Button onClick={save}>Save voice settings</Button>
+        <Button onClick={() => void save()} disabled={saving}>
+          {saving ? 'Saving…' : 'Save voice settings'}
+        </Button>
       </div>
     </TenantSettingsLayout>
   )

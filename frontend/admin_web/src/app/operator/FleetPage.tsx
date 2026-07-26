@@ -10,11 +10,13 @@ import {
   Modal,
   PeekPanel,
   Select,
+  StateBlock,
   StatusBadge,
   StatusMarkerGlyph,
   TableToolbar,
   TextInput,
   useDataTable,
+  useToast,
   type Column,
   type StatusMarker,
 } from '../../kit/index.ts'
@@ -25,10 +27,13 @@ import {
   fleetHealthTone,
   fleetStatusLabel,
   fleetStatusTone,
+  fleetUpdatedLabel,
+  fleetUpdatedSortValue,
   formatUsd,
   type FleetMuseum,
   type FleetStatus,
 } from './fleetFixtures.ts'
+import { DemoDataNote } from '../common/DemoDataNote.tsx'
 import styles from './FleetPage.module.css'
 
 type PendingStatusChange = {
@@ -36,10 +41,22 @@ type PendingStatusChange = {
   readonly nextStatus: FleetStatus
 }
 
+/**
+ * A museum and its first administrator are created together, so onboarding
+ * asks for the login too. There is no way to create one without the other.
+ */
 type OnboardDraft = {
   readonly name: string
-  readonly region: string
-  readonly roomCount: string
+  readonly slug: string
+  readonly adminEmail: string
+  readonly adminPassword: string
+}
+
+const EMPTY_ONBOARD_DRAFT: OnboardDraft = {
+  name: '',
+  slug: '',
+  adminEmail: '',
+  adminPassword: '',
 }
 
 function useSheetMode(): boolean {
@@ -85,6 +102,10 @@ function MiniReadinessSpine({ museum }: { readonly museum: FleetMuseum }): React
 export function FleetPage(): ReactElement {
   const {
     museums,
+    isLive,
+    status,
+    loadError,
+    reload,
     fleetUi,
     setFleetView,
     setFleetSearch,
@@ -96,11 +117,13 @@ export function FleetPage(): ReactElement {
   const navigate = useNavigate()
   const location = useLocation()
   const prefersSheet = useSheetMode()
+  const { show } = useToast()
 
   const [selectedMuseumId, setSelectedMuseumId] = useState<string | null>(null)
   const [activePeekTabId, setActivePeekTabId] = useState('summary')
   const [onboardOpen, setOnboardOpen] = useState(false)
-  const [onboardDraft, setOnboardDraft] = useState<OnboardDraft>({ name: '', region: '', roomCount: '4' })
+  const [onboardDraft, setOnboardDraft] = useState<OnboardDraft>(EMPTY_ONBOARD_DRAFT)
+  const [onboarding, setOnboarding] = useState(false)
   const [pendingStatusChange, setPendingStatusChange] = useState<PendingStatusChange | null>(null)
   const returnFocusTo = useRef<HTMLElement | null>(null)
 
@@ -130,7 +153,7 @@ export function FleetPage(): ReactElement {
     return museums.filter((museum) => {
       if (fleetUi.statusFilter !== 'all' && museum.status !== fleetUi.statusFilter) return false
       if (needle.length === 0) return true
-      return `${museum.name} ${museum.region}`.toLowerCase().includes(needle)
+      return `${museum.name} ${museum.slug}`.toLowerCase().includes(needle)
     })
   }, [fleetUi.search, fleetUi.statusFilter, museums])
 
@@ -153,7 +176,7 @@ export function FleetPage(): ReactElement {
         cell: (museum) => (
           <div className={styles.tableName}>
             <span className="museum-name">{museum.name}</span>
-            <span className={`text-caption ${styles.muted}`}>{museum.region}</span>
+            <span className={`text-caption ${styles.muted}`}>{museum.slug}</span>
           </div>
         ),
       },
@@ -195,8 +218,10 @@ export function FleetPage(): ReactElement {
         id: 'updated',
         header: 'Updated',
         sortable: true,
-        sortValue: (museum) => museum.updatedAt,
-        cell: (museum) => <span className={`text-caption ${styles.muted}`}>{museum.updatedAt}</span>,
+        sortValue: (museum) => fleetUpdatedSortValue(museum.updatedAt),
+        cell: (museum) => (
+          <span className={`text-caption ${styles.muted}`}>{fleetUpdatedLabel(museum.updatedAt)}</span>
+        ),
       },
     ],
     [],
@@ -229,10 +254,35 @@ export function FleetPage(): ReactElement {
     })
   }
 
-  function confirmStatusChange(): void {
+  /** The backend requires all four, so the button stays out of reach until it has them. */
+  const canOnboard =
+    onboardDraft.name.trim().length > 0 &&
+    onboardDraft.slug.trim().length > 0 &&
+    onboardDraft.adminEmail.trim().length > 0 &&
+    onboardDraft.adminPassword.length >= 12
+
+  async function confirmStatusChange(): Promise<void> {
     if (pendingStatusChange === null) return
-    setMuseumStatus(pendingStatusChange.museumId, pendingStatusChange.nextStatus)
+    const { museumId, nextStatus } = pendingStatusChange
     setPendingStatusChange(null)
+    const result = await setMuseumStatus(museumId, nextStatus)
+    if (!result.ok) show({ tone: 'danger', message: result.message })
+  }
+
+  async function submitOnboard(): Promise<void> {
+    setOnboarding(true)
+    const result = await onboardMuseum(onboardDraft)
+    setOnboarding(false)
+
+    if (!result.ok) {
+      show({ tone: 'danger', message: result.message })
+      return
+    }
+
+    setOnboardDraft(EMPTY_ONBOARD_DRAFT)
+    setOnboardOpen(false)
+    show({ tone: 'success', message: `${onboardDraft.name.trim()} is onboarded.` })
+    navigate('/operator/fleet')
   }
 
   function enterTenant(museumId: string): void {
@@ -253,19 +303,37 @@ export function FleetPage(): ReactElement {
         confirmLabel: 'Suspend',
       },
       onAct: (keys: ReadonlySet<string>) => {
-        for (const museumId of keys) setMuseumStatus(museumId, 'suspended')
-        table.clearSelection()
+        void applyToSelection(keys, 'suspended')
       },
     },
     {
       id: 'reinstate-selected',
       label: 'Reinstate selected',
       onAct: (keys: ReadonlySet<string>) => {
-        for (const museumId of keys) setMuseumStatus(museumId, 'active')
-        table.clearSelection()
+        void applyToSelection(keys, 'active')
       },
     },
   ]
+
+  /**
+   * Sequential rather than concurrent: each write is a separate request the
+   * server audits, and a burst of them against the rate limiter would start
+   * failing partway through for no reason the operator could see.
+   */
+  async function applyToSelection(
+    keys: ReadonlySet<string>,
+    nextStatus: FleetStatus,
+  ): Promise<void> {
+    const failures: string[] = []
+    for (const museumId of keys) {
+      const result = await setMuseumStatus(museumId, nextStatus)
+      if (!result.ok) failures.push(museums.find((m) => m.id === museumId)?.name ?? museumId)
+    }
+    table.clearSelection()
+    if (failures.length > 0) {
+      show({ tone: 'danger', message: `Could not update ${failures.join(', ')}.` })
+    }
+  }
 
   return (
     <div className={styles.page}>
@@ -276,7 +344,11 @@ export function FleetPage(): ReactElement {
             <p className={`text-body ${styles.muted}`}>
               {museums.length} museums. {attentionCount} need attention from readiness, status, or health.
             </p>
-            <p className={`text-caption ${styles.demoText}`}>Spend and health values are fixture demo data.</p>
+            <DemoDataNote>
+              {isLive
+                ? 'Names, statuses, and readiness come from the server. Spend and health have no backend counterpart and are illustrative.'
+                : 'No API is configured, so the whole fleet below is fixtures.'}
+            </DemoDataNote>
           </div>
           <div className={styles.headerActions}>
             <Button
@@ -312,7 +384,7 @@ export function FleetPage(): ReactElement {
                 type="search"
                 value={fleetUi.search}
                 onChange={setFleetSearch}
-                placeholder="Search by museum or region"
+                placeholder="Search by museum or slug"
                 clearable
                 shortcutHint="Ctrl+K"
               />
@@ -331,14 +403,29 @@ export function FleetPage(): ReactElement {
         </div>
       </header>
 
-      {fleetUi.view === 'gallery' ? (
+      {status === 'loading' ? (
+        <StateBlock state={{ kind: 'loading', label: 'the fleet' }} />
+      ) : null}
+
+      {status === 'error' ? (
+        <StateBlock
+          state={{
+            kind: 'failure',
+            title: 'The fleet did not load',
+            body: loadError ?? 'The request failed.',
+            retry: { label: 'Try again', onAct: reload },
+          }}
+        />
+      ) : null}
+
+      {status === 'ready' && fleetUi.view === 'gallery' ? (
         <section className={styles.gallery} aria-label="Fleet gallery wall">
           {filteredMuseums.map((museum) => (
             <article key={museum.id} className={styles.card}>
               <div className={styles.cardHeader}>
                 <div>
                   <p className={`museum-name ${styles.museumName}`}>{museum.name}</p>
-                  <p className={`text-caption ${styles.muted}`}>{museum.region}</p>
+                  <p className={`text-caption ${styles.muted}`}>{museum.slug}</p>
                 </div>
                 <StatusBadge tone={fleetStatusTone(museum.status)} label={fleetStatusLabel(museum.status)} />
               </div>
@@ -397,7 +484,9 @@ export function FleetPage(): ReactElement {
             </article>
           ))}
         </section>
-      ) : (
+      ) : null}
+
+      {status === 'ready' && fleetUi.view === 'table' ? (
         <section className={styles.tableCard}>
           <DataTable
             caption="Fleet table"
@@ -455,14 +544,14 @@ export function FleetPage(): ReactElement {
             onClear={table.clearSelection}
           />
         </section>
-      )}
+      ) : null}
 
       <PeekPanel
         open={selectedMuseum !== null}
         title="Museum"
         {...(selectedMuseum !== null ? { museumName: selectedMuseum.name } : {})}
         {...(selectedMuseum !== null
-          ? { subtitle: `${selectedMuseum.region} • ${selectedMuseum.roomCount} rooms` }
+          ? { subtitle: `${selectedMuseum.slug} • ${selectedMuseum.roomCount} rooms` }
           : {})}
         {...(selectedMuseum !== null
           ? { status: { tone: fleetStatusTone(selectedMuseum.status), label: fleetStatusLabel(selectedMuseum.status) } }
@@ -475,7 +564,9 @@ export function FleetPage(): ReactElement {
               selectedMuseum !== null ? (
                 <div className={styles.peekSummary}>
                   <p className="text-body">
-                    Fleet fixture record for <span className="museum-name">{selectedMuseum.name}</span>.
+                    <span className="museum-name">{selectedMuseum.name}</span> has{' '}
+                    {selectedMuseum.roomCount} rooms, updated{' '}
+                    {fleetUpdatedLabel(selectedMuseum.updatedAt)}.
                   </p>
                   <div className={styles.peekStats}>
                     <div className={styles.peekStat}>
@@ -487,6 +578,7 @@ export function FleetPage(): ReactElement {
                       <p className="text-subtitle">{fleetHealthLabel(selectedMuseum.health)}</p>
                     </div>
                   </div>
+                  <DemoDataNote>Spend and health are illustrative.</DemoDataNote>
                 </div>
               ) : null,
           },
@@ -527,7 +619,7 @@ export function FleetPage(): ReactElement {
       <Modal
         open={onboardOpen}
         title="Onboard museum"
-        description="Creates a fixture-backed tenant record in onboarding state."
+        description="Creates the museum and the account that will administer it, in one step."
         onClose={() => {
           setOnboardOpen(false)
           if (location.pathname.endsWith('/fleet/new')) navigate('/operator/fleet')
@@ -543,20 +635,8 @@ export function FleetPage(): ReactElement {
             >
               Cancel
             </Button>
-            <Button
-              onClick={() => {
-                onboardMuseum({
-                  name: onboardDraft.name,
-                  region: onboardDraft.region,
-                  roomCount: Number.parseInt(onboardDraft.roomCount, 10),
-                })
-                setOnboardDraft({ name: '', region: '', roomCount: '4' })
-                setOnboardOpen(false)
-                navigate('/operator/fleet')
-              }}
-              disabled={onboardDraft.name.trim().length === 0}
-            >
-              Add museum
+            <Button onClick={() => void submitOnboard()} disabled={!canOnboard || onboarding}>
+              {onboarding ? 'Adding…' : 'Add museum'}
             </Button>
           </>
         }
@@ -572,23 +652,44 @@ export function FleetPage(): ReactElement {
               />
             )}
           </Field>
-          <Field id="onboard-region" label="Region">
+          <Field
+            id="onboard-slug"
+            label="Public slug"
+            required
+            hint="Lowercase letters, numbers, and hyphens. This is permanent."
+          >
             {(control) => (
               <TextInput
                 {...control}
-                value={onboardDraft.region}
-                onChange={(next) => setOnboardDraft((draft) => ({ ...draft, region: next }))}
-                placeholder="Region"
+                value={onboardDraft.slug}
+                onChange={(next) => setOnboardDraft((draft) => ({ ...draft, slug: next }))}
+                placeholder="adwa-victory-memorial"
               />
             )}
           </Field>
-          <Field id="onboard-rooms" label="Initial room count">
+          <Field id="onboard-admin-email" label="First administrator email" required>
             {(control) => (
               <TextInput
                 {...control}
-                value={onboardDraft.roomCount}
-                onChange={(next) => setOnboardDraft((draft) => ({ ...draft, roomCount: next }))}
-                inputMode="numeric"
+                type="email"
+                value={onboardDraft.adminEmail}
+                onChange={(next) => setOnboardDraft((draft) => ({ ...draft, adminEmail: next }))}
+                placeholder="admin@museum.example"
+              />
+            )}
+          </Field>
+          <Field
+            id="onboard-admin-password"
+            label="First administrator password"
+            required
+            hint="At least 12 characters. It cannot be read back, so pass it on now."
+          >
+            {(control) => (
+              <TextInput
+                {...control}
+                type="password"
+                value={onboardDraft.adminPassword}
+                onChange={(next) => setOnboardDraft((draft) => ({ ...draft, adminPassword: next }))}
               />
             )}
           </Field>
@@ -606,7 +707,7 @@ export function FleetPage(): ReactElement {
         }
         confirmLabel={pendingStatusChange?.nextStatus === 'suspended' ? 'Suspend museum' : 'Reinstate museum'}
         tone={pendingStatusChange?.nextStatus === 'suspended' ? 'danger' : 'primary'}
-        onConfirm={confirmStatusChange}
+        onConfirm={() => void confirmStatusChange()}
         onCancel={() => setPendingStatusChange(null)}
         returnFocusTo={returnFocusTo}
       />

@@ -4,7 +4,6 @@ import {
   DataTable,
   Field,
   Panel,
-  ProvenanceTag,
   Select,
   StatusBadge,
   TableToolbar,
@@ -22,6 +21,7 @@ import {
   type SpendStatusFilter,
   type SpendWindow,
 } from './phase9Fixtures.ts'
+import { DemoDataNote } from '../common/DemoDataNote.tsx'
 import { fleetStatusLabel, fleetStatusTone } from './fleetFixtures.ts'
 import styles from './OperatorPhase9Pages.module.css'
 
@@ -102,9 +102,10 @@ export function SpendPage(): ReactElement {
             <p className={`text-body ${styles.muted}`}>
               Per-tenant spend attribution with sortable breakdown by tenant and status.
             </p>
-            <p className={styles.provenanceRow}>
-              <ProvenanceTag provenance="demo" note="Billing integration pending" />
-            </p>
+            <DemoDataNote>
+              Spend is illustrative. The backend records payments but attributes no provider cost to
+              a tenant, so every figure below is invented.
+            </DemoDataNote>
           </div>
           <div>
             <p className={`column-header ${styles.muted}`}>Selected window total</p>

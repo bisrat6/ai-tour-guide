@@ -5,6 +5,9 @@
  * a copy of it kept here — so if the API renames a field and the collection is
  * updated, this fails until the frontend follows. It is the guard that stops the
  * room/item field alignment from silently drifting back apart.
+ *
+ * The backend now lives in the same repository, so this reads its collection
+ * directly and these suites actually run. They used to skip.
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -16,12 +19,18 @@ import { describe, expect, it } from 'vitest'
 import { createEmptyItemDraft, createEmptyRoomDraft } from '../app/rooms/authoringStore.tsx'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const collectionPath = join(here, '..', '..', '..', 'postman', 'Adwa-Admin-API.postman_collection.json')
+const repoRoot = join(here, '..', '..', '..', '..')
+const collectionPath = join(
+  repoRoot,
+  'backend',
+  'postman',
+  'Adwa-Admin-API.postman_collection.json',
+)
 
 /**
- * The collection is deliberately not committed, so this suite only runs where a
- * copy is present. Skipping keeps a fresh clone green, but it also means CI
- * proves nothing here — drop the folder in before trusting a green run.
+ * Guarded rather than assumed so that checking out admin_web on its own still
+ * runs the rest of the file. A green run without it proves less, which is why
+ * the missing-collection case is asserted below.
  */
 const hasCollection = existsSync(collectionPath)
 
@@ -94,11 +103,14 @@ function bodyKeysFor(method: string, path: string): readonly string[] {
 }
 
 /**
- * A checked-in copy of the contract's field names, so a clone without the
- * collection still fails on a rename. The suites below are the authority — this
- * only exists because the collection is not committed.
+ * A checked-in copy of the contract's field names, so a checkout without the
+ * collection still fails on a rename. The suites below are the authority.
  */
 describe('authoring drafts keep the backend field names', () => {
+  it('can see the backend collection, so the suites below are not silently skipped', () => {
+    expect(hasCollection, `expected a Postman collection at ${collectionPath}`).toBe(true)
+  })
+
   it('spells the room draft the way the API does', () => {
     expect(Object.keys(createEmptyRoomDraft()).sort()).toEqual([
       'narrationScript',

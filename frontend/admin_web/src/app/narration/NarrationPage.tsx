@@ -10,6 +10,7 @@ import {
   TextArea,
   useToast,
 } from '../../kit/index.ts'
+import { DemoDataNote } from '../common/DemoDataNote.tsx'
 import { toRoomDraft, useAuthoringStore } from '../rooms/authoringStore.tsx'
 import {
   DEFAULT_ROOM_VOICE_BY_ID,
@@ -84,11 +85,17 @@ export function NarrationPage(): ReactElement {
     }))
   }, [rooms])
 
-  function handleSaveScript(): void {
+  async function handleSaveScript(): Promise<void> {
     if (selectedRoom === undefined) return
     const nextDraft = { ...toRoomDraft(selectedRoom), narrationScript: draftScript }
-    const result = updateRoom(selectedRoom.id, nextDraft)
-    if (!result.ok) return
+    const result = await updateRoom(selectedRoom.id, nextDraft)
+    if (!result.ok) {
+      show({
+        tone: 'danger',
+        message: result.message ?? 'Could not save that narration script.',
+      })
+      return
+    }
     show({ tone: 'success', message: `Narration script saved for ${selectedRoom.title}.` })
   }
 
@@ -116,8 +123,13 @@ export function NarrationPage(): ReactElement {
           <p className="museum-name">Adwa Memorial Museum</p>
           <h1 className="text-title">Narration</h1>
           <p className={`text-body ${styles.muted}`}>
-            Group rooms by audio readiness, update script and voice, and queue fixture regeneration.
+            Group rooms by audio readiness and update the script each room is narrated from.
           </p>
+          <DemoDataNote provenance="pending">
+            Saving a script is real. Generating the audio is not: pre-generation runs as a
+            command-line job on the server and has no HTTP surface, so the regenerate button below
+            queues nothing.
+          </DemoDataNote>
         </div>
       </header>
 
@@ -239,7 +251,7 @@ export function NarrationPage(): ReactElement {
                 <Button tone="secondary" onClick={handleRegenerate}>
                   Regenerate audio
                 </Button>
-                <Button onClick={handleSaveScript}>Save narration script</Button>
+                <Button onClick={() => void handleSaveScript()}>Save narration script</Button>
               </div>
             </div>
           )}

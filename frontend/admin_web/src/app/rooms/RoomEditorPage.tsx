@@ -6,6 +6,7 @@ import {
   ConfirmDialog,
   Field,
   Select,
+  StateBlock,
   TextArea,
   TextInput,
   useToast,
@@ -32,10 +33,12 @@ export function RoomEditorPage({ mode }: { readonly mode: RoomEditorMode }): Rea
   const navigate = useNavigate()
   const { roomId = '' } = useParams()
   const { show } = useToast()
-  const { rooms, listRoomItems, findRoom, createRoom, updateRoom, deleteRoom } = useAuthoringStore()
+  const { rooms, listRoomItems, findRoom, createRoom, updateRoom, deleteRoom, status, loadError, reload } =
+    useAuthoringStore()
 
   const room = mode === 'edit' ? findRoom(roomId) : undefined
-  const isMissing = mode === 'edit' && room === undefined
+  /** Only missing once the museum has actually loaded; mid-load it is unknown. */
+  const isMissing = mode === 'edit' && room === undefined && status === 'ready'
   const baseline = useMemo(() => {
     if (mode === 'create') return createEmptyRoomDraft()
     if (room !== undefined) return toRoomDraft(room)
@@ -46,6 +49,10 @@ export function RoomEditorPage({ mode }: { readonly mode: RoomEditorMode }): Rea
   const [errors, setErrors] = useState<RoomDraftErrors>(EMPTY_ROOM_ERRORS)
   const [discardModalOpen, setDiscardModalOpen] = useState(false)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  /** Set when another room points here and the server refused a plain delete. */
+  const [referencedBlock, setReferencedBlock] = useState<string | null>(null)
 
   const dirty = !roomDraftEquals(draft, baseline)
   const unsavedGuard = useUnsavedChangesGuard(dirty)
@@ -60,13 +67,35 @@ export function RoomEditorPage({ mode }: { readonly mode: RoomEditorMode }): Rea
   const itemSummary = room === undefined ? 'Items can be added after the room is created.' : undefined
   const roomItems = room === undefined ? [] : listRoomItems(room.id)
 
+  if (status !== 'ready') {
+    return (
+      <div className={styles.page}>
+        <section className={styles.panelCard}>
+          <StateBlock
+            size="page"
+            state={
+              status === 'loading'
+                ? { kind: 'loading', label: 'Loading room' }
+                : {
+                    kind: 'failure',
+                    title: 'Could not load this room',
+                    body: loadError ?? 'The server did not answer.',
+                    retry: { label: 'Try again', onAct: reload },
+                  }
+            }
+          />
+        </section>
+      </div>
+    )
+  }
+
   if (isMissing) {
     return (
       <div className={styles.page}>
         <section className={styles.panelCard}>
           <h1 className="text-title">Room not found</h1>
           <p className={`text-body ${styles.muted}`}>
-            The selected room no longer exists in fixtures. Return to the rooms list.
+            This room no longer exists. Return to the rooms list.
           </p>
           <Button tone="secondary" onClick={() => navigate('..')}>
             Back to rooms
@@ -83,26 +112,34 @@ export function RoomEditorPage({ mode }: { readonly mode: RoomEditorMode }): Rea
     }
   }
 
-  function commitSave(): void {
-    if (mode === 'create') {
-      const created = createRoom(draft)
-      if (!created.ok) {
-        setErrors(created.errors)
+  async function commitSave(): Promise<void> {
+    if (saving) return
+    setSaving(true)
+    try {
+      if (mode === 'create') {
+        const created = await createRoom(draft)
+        if (!created.ok) {
+          setErrors(created.errors)
+          if (created.message !== undefined) show({ tone: 'danger', message: created.message })
+          return
+        }
+        show({ tone: 'success', message: 'Room created.' })
+        unsavedGuard.allowNextNavigation()
+        navigate(`../${created.roomId}`, { replace: true })
         return
       }
-      show({ tone: 'success', message: 'Room created.' })
-      unsavedGuard.allowNextNavigation()
-      navigate(`../${created.roomId}`, { replace: true })
-      return
-    }
 
-    const updated = updateRoom(roomId, draft)
-    if (!updated.ok) {
-      setErrors(updated.errors)
-      return
+      const updated = await updateRoom(roomId, draft)
+      if (!updated.ok) {
+        setErrors(updated.errors)
+        if (updated.message !== undefined) show({ tone: 'danger', message: updated.message })
+        return
+      }
+      show({ tone: 'success', message: 'Room saved.' })
+      setErrors(EMPTY_ROOM_ERRORS)
+    } finally {
+      setSaving(false)
     }
-    show({ tone: 'success', message: 'Room saved.' })
-    setErrors(EMPTY_ROOM_ERRORS)
   }
 
   function resetDraft(): void {
@@ -119,12 +156,32 @@ export function RoomEditorPage({ mode }: { readonly mode: RoomEditorMode }): Rea
     setDiscardModalOpen(true)
   }
 
-  function attemptDelete(): void {
-    if (mode !== 'edit' || room === undefined) return
-    deleteRoom(room.id)
-    show({ tone: 'success', message: 'Room deleted.' })
-    unsavedGuard.allowNextNavigation()
-    navigate('..', { replace: true })
+  /**
+   * A room another room points at is refused rather than deleted. Rather than
+   * report a dead end, the refusal is turned into the second, explicit choice
+   * of deleting it anyway, which nulls the pointers that referenced it.
+   */
+  async function attemptDelete(force: boolean): Promise<void> {
+    if (mode !== 'edit' || room === undefined || deleting) return
+    setDeleting(true)
+    try {
+      const outcome = await deleteRoom(room.id, { force })
+      if (!outcome.ok) {
+        if (outcome.reason === 'referenced') {
+          setDeleteModalOpen(false)
+          setReferencedBlock(outcome.message)
+          return
+        }
+        show({ tone: 'danger', message: outcome.message })
+        setDeleteModalOpen(false)
+        return
+      }
+      show({ tone: 'success', message: 'Room deleted.' })
+      unsavedGuard.allowNextNavigation()
+      navigate('..', { replace: true })
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -255,7 +312,9 @@ export function RoomEditorPage({ mode }: { readonly mode: RoomEditorMode }): Rea
               Delete room
             </Button>
           ) : null}
-          <Button onClick={commitSave}>Save room</Button>
+          <Button onClick={() => void commitSave()} disabled={saving}>
+            {saving ? 'Saving…' : 'Save room'}
+          </Button>
         </div>
       </div>
 
@@ -285,11 +344,25 @@ export function RoomEditorPage({ mode }: { readonly mode: RoomEditorMode }): Rea
         open={deleteModalOpen}
         title="Delete room?"
         entityName={room?.title ?? 'Room'}
-        consequence="and all items in it will be removed from fixtures."
+        consequence="and all items in it will be deleted."
         confirmLabel="Delete room"
         tone="danger"
         onCancel={() => setDeleteModalOpen(false)}
-        onConfirm={attemptDelete}
+        onConfirm={() => void attemptDelete(false)}
+      />
+
+      <ConfirmDialog
+        open={referencedBlock !== null}
+        title="Another room points at this one"
+        entityName={room?.title ?? 'Room'}
+        consequence="is the next room in another room's sequence. Deleting it anyway clears that link."
+        confirmLabel="Delete anyway"
+        tone="danger"
+        onCancel={() => setReferencedBlock(null)}
+        onConfirm={() => {
+          setReferencedBlock(null)
+          void attemptDelete(true)
+        }}
       />
     </div>
   )

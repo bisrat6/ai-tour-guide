@@ -9,7 +9,15 @@ import {
   StatusBadge,
   type StatusTone,
 } from '../../kit/index.ts'
+import { DemoDataNote, NO_ENDPOINT_YET } from '../common/DemoDataNote.tsx'
 import { useScopedTenantContext } from '../operator/scopedTenantContext.tsx'
+import {
+  formatRelativeTime,
+  narrationLabel,
+  narrationTone,
+  useAuthoringStore,
+} from '../rooms/authoringStore.tsx'
+import { useTenantSettingsStore } from '../settings/settingsStore.ts'
 import { ReadinessSpine } from './ReadinessSpine.tsx'
 import {
   ENGAGEMENT_VALUE_SERIES,
@@ -18,9 +26,9 @@ import {
   OVERVIEW_KPIS,
   OVERVIEW_MUSEUM_NAME,
   OVERVIEW_RECENT_CHANGES,
-  OVERVIEW_ROOMS,
   TOP_ROOMS_BY_VISITS,
   VISIT_VOLUME_SERIES,
+  type RoomReadiness,
 } from './overviewFixtures.ts'
 import styles from './TenantOverviewPage.module.css'
 
@@ -39,10 +47,45 @@ function toneLabel(tone: StatusTone): string {
   return 'Not started'
 }
 
+const TONE_MARKERS: Readonly<Record<StatusTone, RoomReadiness['marker']>> = {
+  success: 'dot',
+  warning: 'ring',
+  danger: 'cross',
+  neutral: 'dash',
+}
+
 export function TenantOverviewPage(): ReactElement {
   const scoped = useScopedTenantContext()
+  const { rooms, isLive, status } = useAuthoringStore()
+  const { value: settings } = useTenantSettingsStore()
   const [hiddenVolumeSeries, setHiddenVolumeSeries] = useState<readonly string[]>([])
   const [hiddenValueSeries, setHiddenValueSeries] = useState<readonly string[]>([])
+
+  /**
+   * The spine and the readiness detail below it are the museum's own rooms, in
+   * story order, with narration state read from whether audio exists. Every
+   * other figure on this page is fixtures.
+   */
+  const overviewRooms = useMemo<readonly RoomReadiness[]>(
+    () =>
+      rooms.map((room, index) => {
+        const tone = narrationTone(room.narrationStatus)
+        return {
+          id: room.id,
+          order: index + 1,
+          title: room.title,
+          narrationLabel: narrationLabel(room.narrationStatus),
+          narrationTone: tone,
+          marker: TONE_MARKERS[tone],
+          updatedAt: formatRelativeTime(room.lastEditedAt),
+          // Nothing measures how complete a room is, so it is not claimed.
+          completion: '—',
+        }
+      }),
+    [rooms],
+  )
+
+  const museumName = isLive ? settings.museum.museumName : OVERVIEW_MUSEUM_NAME
 
   const statusCounts = useMemo(() => {
     const initial: Record<StatusTone, number> = {
@@ -51,19 +94,21 @@ export function TenantOverviewPage(): ReactElement {
       danger: 0,
       neutral: 0,
     }
-    for (const room of OVERVIEW_ROOMS) {
+    for (const room of overviewRooms) {
       initial[room.narrationTone] += 1
     }
     return initial
-  }, [])
+  }, [overviewRooms])
 
-  const readinessPercent = Math.round((statusCounts.success / OVERVIEW_ROOMS.length) * 100)
+  const roomTotal = overviewRooms.length
+  const readinessPercent = roomTotal === 0 ? 0 : Math.round((statusCounts.success / roomTotal) * 100)
+  const share = (count: number): number => (roomTotal === 0 ? 0 : count / roomTotal)
 
   return (
     <div className={styles.page}>
       <section className={styles.mainColumn} aria-labelledby="overview-heading">
         <header className={styles.header}>
-          <p className={`${styles.museumName} museum-name`}>{OVERVIEW_MUSEUM_NAME}</p>
+          <p className={`${styles.museumName} museum-name`}>{museumName}</p>
           <h1 id="overview-heading" className="text-title">
             Overview
           </h1>
@@ -73,12 +118,16 @@ export function TenantOverviewPage(): ReactElement {
           <div className={styles.spinePanel}>
             <div className={styles.spineHeader}>
               <h2 className="text-subtitle">Readiness spine</h2>
-              <ProvenanceTag provenance="demo" note="room fixtures" />
+              <ProvenanceTag provenance={isLive ? 'live' : 'demo'} />
             </div>
             <p className={`${styles.spineNote} text-body`}>
-              Story-order jump control. Marker shapes mirror narration readiness states.
+              Story-order jump control. A room is ready once its narration audio exists.
             </p>
-            <ReadinessSpine rooms={OVERVIEW_ROOMS} />
+            {status === 'loading' ? (
+              <p className={`${styles.spineNote} text-caption`}>Loading rooms…</p>
+            ) : (
+              <ReadinessSpine rooms={overviewRooms} />
+            )}
             <ul className={styles.spineLegend}>
               <li>
                 <StatusBadge
@@ -117,6 +166,7 @@ export function TenantOverviewPage(): ReactElement {
             <KpiCard key={kpi.label} {...kpi} />
           ))}
         </section>
+        <DemoDataNote>{NO_ENDPOINT_YET}</DemoDataNote>
 
         <section className={styles.chartsSection} aria-label="Visitor and engagement charts">
           <Panel>
@@ -161,10 +211,10 @@ export function TenantOverviewPage(): ReactElement {
             <p className={`${styles.panelCopy} text-body`}>
               The spine targets these anchors so reviewers can verify each room's state in story order.
             </p>
-            <ProvenanceTag provenance="demo" />
+            <ProvenanceTag provenance={isLive ? 'live' : 'demo'} />
           </div>
           <ol className={styles.roomList}>
-            {OVERVIEW_ROOMS.map((room) => (
+            {overviewRooms.map((room) => (
               <li key={room.id} id={`room-${room.id}`} className={styles.roomRow}>
                 <div className={styles.roomIdentity}>
                   <p className={`${styles.roomOrder} text-caption numeric`}>{room.order}</p>
@@ -176,11 +226,10 @@ export function TenantOverviewPage(): ReactElement {
                 <div className={styles.roomStatus}>
                   <StatusBadge
                     tone={room.narrationTone}
-                    label={toneLabel(room.narrationTone)}
+                    label={room.narrationLabel}
                     marker={room.marker}
                     detail={`${room.title} narration readiness`}
                   />
-                  <p className={`${styles.roomMeta} text-caption numeric`}>Completion {room.completion}</p>
                 </div>
               </li>
             ))}
@@ -194,6 +243,10 @@ export function TenantOverviewPage(): ReactElement {
             </p>
             <ProvenanceTag provenance="demo" />
           </div>
+          <DemoDataNote>
+            Illustrative. The real trail lives at the audit log, which this panel is not wired to
+            yet.
+          </DemoDataNote>
           <ul className={styles.changeList}>
             {OVERVIEW_RECENT_CHANGES.map((entry) => (
               <li key={entry.id} className={styles.changeRow}>
@@ -220,10 +273,10 @@ export function TenantOverviewPage(): ReactElement {
         <Panel title="Readiness gauge">
           <div className={styles.rowBetween}>
             <p className={`${styles.gaugeValue} text-display numeric`}>{readinessPercent}%</p>
-            <ProvenanceTag provenance="demo" />
+            <ProvenanceTag provenance={isLive ? 'live' : 'demo'} />
           </div>
           <p className={`${styles.panelCopy} text-caption`}>
-            {statusCounts.success} of {OVERVIEW_ROOMS.length} rooms have ready narration.
+            {statusCounts.success} of {roomTotal} rooms have ready narration.
           </p>
         </Panel>
 
@@ -232,22 +285,22 @@ export function TenantOverviewPage(): ReactElement {
             <div className={styles.breakdownBar} role="img" aria-label="Narration readiness breakdown bar">
               <span
                 className={`${styles.breakdownSegment} ${styles.breakdownSuccess}`}
-                style={{ ['--segment-share' as string]: `${statusCounts.success / OVERVIEW_ROOMS.length}` }}
+                style={{ ['--segment-share' as string]: `${share(statusCounts.success)}` }}
               />
               <span
                 className={`${styles.breakdownSegment} ${styles.breakdownWarning}`}
-                style={{ ['--segment-share' as string]: `${statusCounts.warning / OVERVIEW_ROOMS.length}` }}
+                style={{ ['--segment-share' as string]: `${share(statusCounts.warning)}` }}
               />
               <span
                 className={`${styles.breakdownSegment} ${styles.breakdownDanger}`}
-                style={{ ['--segment-share' as string]: `${statusCounts.danger / OVERVIEW_ROOMS.length}` }}
+                style={{ ['--segment-share' as string]: `${share(statusCounts.danger)}` }}
               />
               <span
                 className={`${styles.breakdownSegment} ${styles.breakdownNeutral}`}
-                style={{ ['--segment-share' as string]: `${statusCounts.neutral / OVERVIEW_ROOMS.length}` }}
+                style={{ ['--segment-share' as string]: `${share(statusCounts.neutral)}` }}
               />
             </div>
-            <ProvenanceTag provenance="demo" />
+            <ProvenanceTag provenance={isLive ? 'live' : 'demo'} />
           </div>
           <ul className={styles.insightList}>
             {(['success', 'warning', 'danger', 'neutral'] as const).map((tone) => (
@@ -282,6 +335,7 @@ export function TenantOverviewPage(): ReactElement {
             <p className={`${styles.panelCopy} text-caption`}>Ranked from overview fixtures.</p>
             <ProvenanceTag provenance="demo" />
           </div>
+          <DemoDataNote>Nothing counts visits, so this ranking is invented.</DemoDataNote>
           <ol className={styles.rankedList}>
             {TOP_ROOMS_BY_VISITS.map((room) => (
               <li key={room.roomId} className={styles.rankedRow}>

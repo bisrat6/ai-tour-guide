@@ -145,7 +145,29 @@ describe('error handling', () => {
     expect(error.code).not.toBe('CROSS_TENANT_ACCESS')
   })
 
+  /**
+   * The server names the field `path`, after the Zod issue it came from. This
+   * was read as `field`, which type-checked against an optional property and so
+   * dropped every field error without a word.
+   */
   it('surfaces field details so a message can land on the right input', async () => {
+    fetchMock.mockResolvedValue(
+      respond(400, {
+        error: {
+          message: 'Validation failed.',
+          code: 'VALIDATION_ERROR',
+          requestId: 'r2',
+          details: [{ path: 'slug', message: 'Slug must be lowercase.' }],
+        },
+      }),
+    )
+
+    const error = (await listRooms().catch((cause: unknown) => cause)) as ApiError
+    expect(error.fieldError('slug')).toBe('Slug must be lowercase.')
+    expect(error.fieldError('name')).toBeUndefined()
+  })
+
+  it('ignores a detail keyed the old way rather than appearing to work', async () => {
     fetchMock.mockResolvedValue(
       respond(400, {
         error: {
@@ -158,8 +180,7 @@ describe('error handling', () => {
     )
 
     const error = (await listRooms().catch((cause: unknown) => cause)) as ApiError
-    expect(error.fieldError('slug')).toBe('Slug must be lowercase.')
-    expect(error.fieldError('name')).toBeUndefined()
+    expect(error.fieldError('slug')).toBeUndefined()
   })
 
   it('falls back to the status code when there is no envelope', async () => {

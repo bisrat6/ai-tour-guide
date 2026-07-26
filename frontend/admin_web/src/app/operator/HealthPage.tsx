@@ -1,6 +1,7 @@
 import { useMemo, type ReactElement } from 'react'
 
 import { DataTable, Panel, StatusBadge, type Column } from '../../kit/index.ts'
+import { DemoDataNote } from '../common/DemoDataNote.tsx'
 import {
   PROVIDER_HEALTH_FIXTURES,
   adapterStateLabel,
@@ -97,6 +98,10 @@ export function HealthPage(): ReactElement {
             <StatusBadge tone="danger" marker="cross" label={`${breakerOpenCount} breaker open`} />
           </div>
         </div>
+        <DemoDataNote>
+          Adapter state is illustrative. The backend applies timeouts, retries, and circuit breakers
+          internally but does not report them over HTTP, so no state below is measured.
+        </DemoDataNote>
       </header>
 
       <Panel>

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactElement } from 'react'
 
-import { Button, Field, IntegrationPendingPanel, Select, TextInput, useToast } from '../../kit/index.ts'
+import { Button, Field, Select, StateBlock, TextInput, useToast } from '../../kit/index.ts'
+import { DemoDataNote } from '../common/DemoDataNote.tsx'
 import { TenantSettingsLayout } from './TenantSettingsLayout.tsx'
 import { useTenantSettingsStore, type GateSettingsForm } from './settingsStore.ts'
 import styles from './TenantSettingsLayout.module.css'
@@ -12,31 +13,89 @@ const GATE_MODE_OPTIONS = [
 
 export function GateSettingsPage(): ReactElement {
   const { show } = useToast()
-  const { value, setGate } = useTenantSettingsStore()
+  const { value, setGate, status, loadError, isLive } = useTenantSettingsStore()
   const [draft, setDraft] = useState<GateSettingsForm>(value.gate)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     setDraft(value.gate)
   }, [value.gate])
 
-  function save(): void {
-    setGate(draft)
-    show({ tone: 'success', message: 'Ticket gate settings saved.' })
+  async function save(): Promise<void> {
+    if (saving) return
+    setSaving(true)
+    try {
+      const result = await setGate(draft)
+      if (!result.ok) {
+        show({ tone: 'danger', message: result.message })
+        return
+      }
+      show({ tone: 'success', message: 'Ticket gate settings saved.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (status !== 'ready') {
+    return (
+      <TenantSettingsLayout
+        section="gate"
+        title="Ticket gate configuration"
+        description="Where the visitor app sends a ticket code to be checked."
+      >
+        <StateBlock
+          size="region"
+          state={
+            status === 'loading'
+              ? { kind: 'loading', label: 'Loading gate settings' }
+              : {
+                  kind: 'failure',
+                  title: 'Could not load these settings',
+                  body: loadError ?? 'The server did not answer.',
+                }
+          }
+        />
+      </TenantSettingsLayout>
+    )
   }
 
   return (
     <TenantSettingsLayout
       section="gate"
       title="Ticket gate configuration"
-      description="Configure tenant gate behavior used by fixture verification flows."
+      description="Where the visitor app sends a ticket code to be checked."
     >
       <div className={styles.formGrid}>
+        <Field
+          id="settings-gate-validation-url"
+          label="Ticket validation URL"
+          hint="The museum's own endpoint. The server posts each code here and trusts the answer. Leave blank to accept any code."
+        >
+          {(control) => (
+            <TextInput
+              {...control}
+              value={draft.ticketValidationUrl}
+              onChange={(ticketValidationUrl) =>
+                setDraft((current) => ({ ...current, ticketValidationUrl }))
+              }
+              type="url"
+              inputMode="url"
+              placeholder="https://tickets.example.org/validate"
+            />
+          )}
+        </Field>
+
         <Field id="settings-gate-mode" label="Gate mode">
           {(control) => (
             <Select
               {...control}
               value={draft.gateMode}
-              onChange={(gateMode) => setDraft((current) => ({ ...current, gateMode: gateMode as GateSettingsForm['gateMode'] }))}
+              onChange={(gateMode) =>
+                setDraft((current) => ({
+                  ...current,
+                  gateMode: gateMode as GateSettingsForm['gateMode'],
+                }))
+              }
               options={GATE_MODE_OPTIONS}
             />
           )}
@@ -67,24 +126,18 @@ export function GateSettingsPage(): ReactElement {
           )}
         </Field>
 
-        <IntegrationPendingPanel
-          dependency="Ticket validation API"
-          body="Live ticket checks are not connected in this phase, so verification calls remain disabled."
-          stillUsable="You can still configure gate defaults and save them locally for review."
-          variant="inline"
-        />
-
-        <Button
-          tone="secondary"
-          disabled
-          disabledReason="Integration pending: ticket validation API is not wired yet."
-        >
-          Test ticket validation
-        </Button>
+        {isLive ? (
+          <DemoDataNote>
+            The validation URL is the only gate setting the server holds. Mode, prefix, and grace
+            window are kept in this browser.
+          </DemoDataNote>
+        ) : null}
       </div>
 
       <div className={styles.rowActions}>
-        <Button onClick={save}>Save gate settings</Button>
+        <Button onClick={() => void save()} disabled={saving}>
+          {saving ? 'Saving…' : 'Save gate settings'}
+        </Button>
       </div>
     </TenantSettingsLayout>
   )

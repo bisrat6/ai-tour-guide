@@ -18,13 +18,26 @@ export type ApiErrorCode =
   | 'ROOM_REFERENCED'
   | 'INVALID_ROOM_SEQUENCE'
   | 'RATE_LIMITED'
-  | 'PAYLOAD_TOO_LARGE'
+  | 'INTERNAL_ERROR'
+  | 'UPSTREAM_FAILURE'
+  | 'UPSTREAM_UNAVAILABLE'
+  | 'TIER_LIMIT_EXCEEDED'
+  | 'SUBSCRIPTION_INACTIVE'
+  | 'PAYMENT_ALREADY_PENDING'
+  | 'PAYMENT_NOT_FOUND'
+  | 'TICKET_URL_INVALID'
   | 'NETWORK_ERROR'
   | 'TIMEOUT'
   | 'UNKNOWN'
 
+/**
+ * The server names the offending field `path`, matching the Zod issue it came
+ * from. It was read as `field` here, which type-checked against an optional
+ * property and so failed silently: every server-side field error was dropped
+ * and only the generic message survived.
+ */
 export type ApiErrorDetail = {
-  readonly field?: string
+  readonly path?: string
   readonly message?: string
 }
 
@@ -55,7 +68,7 @@ export class ApiError extends Error {
 
   /** The message for a named form field, when the server said which one failed. */
   fieldError(field: string): string | undefined {
-    return this.details.find((detail) => detail.field === field)?.message
+    return this.details.find((detail) => detail.path === field)?.message
   }
 }
 
@@ -88,6 +101,16 @@ export function messageForCode(error: ApiError): string {
       return 'Another room points at this one. Remove the link or delete it anyway.'
     case 'INVALID_ROOM_SEQUENCE':
       return 'That next-room link would break the room sequence.'
+    case 'SUBSCRIPTION_INACTIVE':
+      return 'This museum\u2019s subscription is not active, so new content cannot be added.'
+    case 'TIER_LIMIT_EXCEEDED':
+      return 'This museum has reached the limit of its plan. Upgrade to add more.'
+    case 'UPSTREAM_UNAVAILABLE':
+      return 'A service the server depends on is temporarily down. Try again shortly.'
+    case 'UPSTREAM_FAILURE':
+      return 'A service the server depends on returned an error.'
+    case 'INTERNAL_ERROR':
+      return 'The server hit an unexpected error. Quote the request id if you report it.'
     default:
       return error.message
   }

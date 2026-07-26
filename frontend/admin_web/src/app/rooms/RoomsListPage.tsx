@@ -28,7 +28,7 @@ const STATUS_OPTIONS = [
 
 export function RoomsListPage(): ReactElement {
   const navigate = useNavigate()
-  const { rooms, listRoomItems } = useAuthoringStore()
+  const { rooms, listRoomItems, status, loadError, reload } = useAuthoringStore()
   const [statusFilter, setStatusFilter] = useState<readonly string[]>([])
 
   const columns = useMemo<readonly Column<RoomRecord>[]>(
@@ -126,9 +126,26 @@ export function RoomsListPage(): ReactElement {
           sort={table.sort}
           onSortChange={table.setSort}
           pagination={table.pagination}
-          {...(rooms.length === 0
-            ? { state: { kind: 'empty' as const, title: 'No rooms yet', body: 'Create your first room.' } }
-            : {})}
+          {...(status === 'loading'
+            ? { state: { kind: 'loading' as const, label: 'Loading rooms' } }
+            : status === 'error'
+              ? {
+                  state: {
+                    kind: 'failure' as const,
+                    title: 'Could not load rooms',
+                    body: loadError ?? 'The server did not answer.',
+                    retry: { label: 'Try again', onAct: reload },
+                  },
+                }
+              : rooms.length === 0
+                ? {
+                    state: {
+                      kind: 'empty' as const,
+                      title: 'No rooms yet',
+                      body: 'Create your first room.',
+                    },
+                  }
+                : {})}
           toolbar={
             <TableToolbar
               searchValue={table.searchQuery}

@@ -5,6 +5,7 @@ import {
   Button,
   ConfirmDialog,
   Field,
+  StateBlock,
   TextArea,
   TextInput,
   useToast,
@@ -30,11 +31,13 @@ export function ItemEditorPage(): ReactElement {
   const { roomId = '', itemId = '' } = useParams()
   const creating = itemId === 'new'
   const { show } = useToast()
-  const { findRoom, findItem, createItem, updateItem, deleteItem } = useAuthoringStore()
+  const { findRoom, findItem, createItem, updateItem, deleteItem, status, loadError, reload } =
+    useAuthoringStore()
 
   const room = findRoom(roomId)
   const existingItem = creating ? undefined : findItem(itemId)
-  const missing = room === undefined || (!creating && existingItem === undefined)
+  const missing =
+    status === 'ready' && (room === undefined || (!creating && existingItem === undefined))
 
   const baseline = useMemo(() => {
     if (existingItem === undefined) return createEmptyItemDraft()
@@ -45,9 +48,33 @@ export function ItemEditorPage(): ReactElement {
   const [errors, setErrors] = useState<ItemDraftErrors>(EMPTY_ITEM_ERRORS)
   const [discardModalOpen, setDiscardModalOpen] = useState(false)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const dirty = !itemDraftEquals(draft, baseline)
   const unsavedGuard = useUnsavedChangesGuard(dirty)
+
+  if (status !== 'ready') {
+    return (
+      <div className={styles.page}>
+        <section className={styles.panelCard}>
+          <StateBlock
+            size="page"
+            state={
+              status === 'loading'
+                ? { kind: 'loading', label: 'Loading item' }
+                : {
+                    kind: 'failure',
+                    title: 'Could not load this item',
+                    body: loadError ?? 'The server did not answer.',
+                    retry: { label: 'Try again', onAct: reload },
+                  }
+            }
+          />
+        </section>
+      </div>
+    )
+  }
 
   if (missing) {
     return (
@@ -55,7 +82,7 @@ export function ItemEditorPage(): ReactElement {
         <section className={styles.panelCard}>
           <h1 className="text-title">Item not found</h1>
           <p className={`text-body ${styles.muted}`}>
-            The room or item is missing in fixture state. Return to the room items table.
+            The room or item no longer exists. Return to the room items table.
           </p>
           <Button tone="secondary" onClick={() => navigate('..')}>
             Back to room items
@@ -72,27 +99,34 @@ export function ItemEditorPage(): ReactElement {
     }
   }
 
-  function commitSave(): void {
-    if (room === undefined) return
-    if (creating) {
-      const created = createItem(room.id, draft)
-      if (!created.ok) {
-        setErrors(created.errors)
+  async function commitSave(): Promise<void> {
+    if (room === undefined || saving) return
+    setSaving(true)
+    try {
+      if (creating) {
+        const created = await createItem(room.id, draft)
+        if (!created.ok) {
+          setErrors(created.errors)
+          if (created.message !== undefined) show({ tone: 'danger', message: created.message })
+          return
+        }
+        show({ tone: 'success', message: 'Item created.' })
+        unsavedGuard.allowNextNavigation()
+        navigate(`../${created.itemId}`, { replace: true })
         return
       }
-      show({ tone: 'success', message: 'Item created.' })
-      unsavedGuard.allowNextNavigation()
-      navigate(`../${created.itemId}`, { replace: true })
-      return
-    }
 
-    const updated = updateItem(itemId, room.id, draft)
-    if (!updated.ok) {
-      setErrors(updated.errors)
-      return
+      const updated = await updateItem(itemId, room.id, draft)
+      if (!updated.ok) {
+        setErrors(updated.errors)
+        if (updated.message !== undefined) show({ tone: 'danger', message: updated.message })
+        return
+      }
+      show({ tone: 'success', message: 'Item saved.' })
+      setErrors(EMPTY_ITEM_ERRORS)
+    } finally {
+      setSaving(false)
     }
-    show({ tone: 'success', message: 'Item saved.' })
-    setErrors(EMPTY_ITEM_ERRORS)
   }
 
   function resetDraft(): void {
@@ -101,12 +135,22 @@ export function ItemEditorPage(): ReactElement {
     setDiscardModalOpen(false)
   }
 
-  function attemptDelete(): void {
-    if (existingItem === undefined) return
-    deleteItem(existingItem.id)
-    show({ tone: 'success', message: 'Item deleted.' })
-    unsavedGuard.allowNextNavigation()
-    navigate('..', { replace: true })
+  async function attemptDelete(): Promise<void> {
+    if (existingItem === undefined || deleting) return
+    setDeleting(true)
+    try {
+      const outcome = await deleteItem(existingItem.id)
+      if (!outcome.ok) {
+        show({ tone: 'danger', message: outcome.message })
+        setDeleteModalOpen(false)
+        return
+      }
+      show({ tone: 'success', message: 'Item deleted.' })
+      unsavedGuard.allowNextNavigation()
+      navigate('..', { replace: true })
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -227,7 +271,9 @@ export function ItemEditorPage(): ReactElement {
               Delete item
             </Button>
           ) : null}
-          <Button onClick={commitSave}>Save item</Button>
+          <Button onClick={() => void commitSave()} disabled={saving}>
+            {saving ? 'Saving…' : 'Save item'}
+          </Button>
         </div>
       </div>
 
@@ -261,7 +307,7 @@ export function ItemEditorPage(): ReactElement {
         confirmLabel="Delete item"
         tone="danger"
         onCancel={() => setDeleteModalOpen(false)}
-        onConfirm={attemptDelete}
+        onConfirm={() => void attemptDelete()}
       />
     </div>
   )

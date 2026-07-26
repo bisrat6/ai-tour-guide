@@ -116,7 +116,7 @@ export const SPEND_FIXTURES: readonly SpendRecord[] = FLEET_FIXTURES.map((museum
   return {
     tenantId: museum.id,
     tenantName: museum.name,
-    region: museum.region,
+    region: museum.slug,
     status: museum.status,
     spendByWindow: {
       '7d': round(monthly * spendMultiplier['7d']),

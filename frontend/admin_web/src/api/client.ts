@@ -11,6 +11,18 @@ export function setAuthToken(token: string | null): void {
   authToken = token
 }
 
+/**
+ * Called once for any response the server rejects as unauthenticated, so a
+ * lapsed token returns the whole app to the door rather than leaving each page
+ * to notice separately. Sign-in cannot trigger it: a bad password is
+ * INVALID_CREDENTIALS, which is a different code on the same status.
+ */
+let onUnauthenticated: (() => void) | null = null
+
+export function setUnauthenticatedHandler(handler: (() => void) | null): void {
+  onUnauthenticated = handler
+}
+
 export type QueryValue = string | number | boolean | undefined | null
 
 export type RequestOptions = {
@@ -23,15 +35,23 @@ export type RequestOptions = {
   readonly timeoutMs?: number
 }
 
+/**
+ * Only reached when a response carries no envelope at all - a proxy or gateway
+ * failing ahead of the API. The API itself always names its own code, and a 413
+ * from it is a VALIDATION_ERROR rather than a distinct one.
+ */
 const STATUS_FALLBACK: Readonly<Record<number, ApiErrorCode>> = {
   400: 'VALIDATION_ERROR',
   401: 'UNAUTHENTICATED',
   403: 'FORBIDDEN',
   404: 'NOT_FOUND',
   409: 'CONFLICT',
-  413: 'PAYLOAD_TOO_LARGE',
+  413: 'VALIDATION_ERROR',
   422: 'INVALID_ROOM_SEQUENCE',
   429: 'RATE_LIMITED',
+  500: 'INTERNAL_ERROR',
+  502: 'UPSTREAM_FAILURE',
+  503: 'UPSTREAM_UNAVAILABLE',
 }
 
 function buildUrl(path: string, query: RequestOptions['query']): string {
@@ -75,6 +95,8 @@ async function toApiError(response: Response): Promise<ApiError> {
 
   const envelope = readEnvelope(payload)
   const code = (envelope.code ?? STATUS_FALLBACK[response.status] ?? 'UNKNOWN') as ApiErrorCode
+
+  if (code === 'UNAUTHENTICATED') onUnauthenticated?.()
 
   return new ApiError({
     message: envelope.message ?? `Request failed with status ${response.status}.`,

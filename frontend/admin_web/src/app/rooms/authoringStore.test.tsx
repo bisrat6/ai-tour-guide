@@ -1,6 +1,17 @@
 import { act, render } from '@testing-library/react'
 import type { ReactElement } from 'react'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+/**
+ * Demo mode, so this stays a test of the client-side rules — draft field names,
+ * story order collisions, self-referencing rooms — rather than of the network.
+ * The live path is covered in authoringStore.live.test.tsx.
+ */
+vi.mock('../../api/config.ts', () => ({
+  apiBaseUrl: null,
+  isLiveApi: false,
+  requestTimeoutMs: 1000,
+}))
 
 import {
   AuthoringStoreProvider,
@@ -36,10 +47,10 @@ function mount(): void {
 }
 
 /** The store closes over the state of the render that produced it, so each mutation gets its own act(). */
-function run<T>(mutation: (store: Store) => T): T {
+async function run<T>(mutation: (store: Store) => Promise<T>): Promise<T> {
   let result!: T
-  act(() => {
-    result = mutation(current())
+  await act(async () => {
+    result = await mutation(current())
   })
   return result
 }
@@ -55,8 +66,8 @@ describe('rooms', () => {
     expect(current().rooms[0]?.title).toBe('Origins of Adwa')
   })
 
-  it('stores a created room under roomOverviewText', () => {
-    const created = run((s) =>
+  it('stores a created room under roomOverviewText', async () => {
+    const created = await run((s) =>
       s.createRoom({
         ...createEmptyRoomDraft(),
         title: 'Aftermath',
@@ -76,9 +87,9 @@ describe('rooms', () => {
     expect(room).not.toHaveProperty('overviewText')
   })
 
-  it('updates roomOverviewText in place', () => {
+  it('updates roomOverviewText in place', async () => {
     const existing = current().rooms[0]!
-    const outcome = run((s) =>
+    const outcome = await run((s) =>
       s.updateRoom(existing.id, { ...toRoomDraft(existing), roomOverviewText: 'Rewritten grounding.' }),
     )
 
@@ -92,8 +103,8 @@ describe('rooms', () => {
     expect(draft).not.toHaveProperty('overviewText')
   })
 
-  it('rejects a duplicate story order', () => {
-    const outcome = run((s) =>
+  it('rejects a duplicate story order', async () => {
+    const outcome = await run((s) =>
       s.createRoom({ ...createEmptyRoomDraft(), title: 'Clash', storyOrder: '1' }),
     )
 
@@ -102,17 +113,17 @@ describe('rooms', () => {
     expect(outcome.errors.storyOrder).toContain('already used')
   })
 
-  it('rejects a room without a title', () => {
-    const outcome = run((s) => s.createRoom({ ...createEmptyRoomDraft(), storyOrder: '9' }))
+  it('rejects a room without a title', async () => {
+    const outcome = await run((s) => s.createRoom({ ...createEmptyRoomDraft(), storyOrder: '9' }))
 
     expect(outcome.ok).toBe(false)
     if (outcome.ok) return
     expect(outcome.errors.title).toBeDefined()
   })
 
-  it('rejects a room that points at itself', () => {
+  it('rejects a room that points at itself', async () => {
     const existing = current().rooms[0]!
-    const outcome = run((s) =>
+    const outcome = await run((s) =>
       s.updateRoom(existing.id, { ...toRoomDraft(existing), nextRoomId: existing.id }),
     )
 
@@ -121,11 +132,11 @@ describe('rooms', () => {
     expect(outcome.errors.nextRoomId).toBeDefined()
   })
 
-  it('cascades to the room items on delete', () => {
+  it('cascades to the room items on delete', async () => {
     const target = current().rooms[0]!
     expect(current().listRoomItems(target.id).length).toBeGreaterThan(0)
 
-    run((s) => s.deleteRoom(target.id))
+    await run((s) => s.deleteRoom(target.id))
 
     expect(current().findRoom(target.id)).toBeUndefined()
     expect(current().listRoomItems(target.id)).toHaveLength(0)
@@ -133,9 +144,9 @@ describe('rooms', () => {
 })
 
 describe('items', () => {
-  it('stores a created item under shortDescription and detailText', () => {
+  it('stores a created item under shortDescription and detailText', async () => {
     const roomId = current().rooms[0]!.id
-    const created = run((s) =>
+    const created = await run((s) =>
       s.createItem(roomId, {
         ...createEmptyItemDraft(),
         name: 'Field Telegram',
@@ -155,9 +166,9 @@ describe('items', () => {
     expect(item).not.toHaveProperty('groundingDetail')
   })
 
-  it('updates both renamed fields in place', () => {
+  it('updates both renamed fields in place', async () => {
     const existing = current().items[0]!
-    const outcome = run((s) =>
+    const outcome = await run((s) =>
       s.updateItem(existing.id, existing.roomId, {
         ...toItemDraft(existing),
         shortDescription: 'Revised visitor copy.',
@@ -182,9 +193,9 @@ describe('items', () => {
     expect(draft).not.toHaveProperty('groundingDetail')
   })
 
-  it('rejects a duplicate display order inside one room', () => {
+  it('rejects a duplicate display order inside one room', async () => {
     const existing = current().items[0]!
-    const outcome = run((s) =>
+    const outcome = await run((s) =>
       s.createItem(existing.roomId, {
         ...createEmptyItemDraft(),
         name: 'Collides',
@@ -197,11 +208,11 @@ describe('items', () => {
     expect(outcome.errors.displayOrder).toContain('already used')
   })
 
-  it('removes only the deleted item', () => {
+  it('removes only the deleted item', async () => {
     const target = current().items[0]!
     const before = current().items.length
 
-    run((s) => s.deleteItem(target.id))
+    await run((s) => s.deleteItem(target.id))
 
     expect(current().findItem(target.id)).toBeUndefined()
     expect(current().items).toHaveLength(before - 1)

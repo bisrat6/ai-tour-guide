@@ -5,6 +5,7 @@ import {
   Button,
   DataTable,
   FilterChip,
+  StateBlock,
   TableToolbar,
   useDataTable,
   type Column,
@@ -20,7 +21,7 @@ const MEDIA_FILTER_OPTIONS = [
 export function RoomItemsListPage(): ReactElement {
   const navigate = useNavigate()
   const { roomId = '' } = useParams()
-  const { findRoom, listRoomItems } = useAuthoringStore()
+  const { findRoom, listRoomItems, status, loadError, reload } = useAuthoringStore()
   const room = findRoom(roomId)
   const [mediaFilter, setMediaFilter] = useState<readonly string[]>([])
 
@@ -91,12 +92,34 @@ export function RoomItemsListPage(): ReactElement {
     [roomItems],
   )
 
+  if (status !== 'ready') {
+    return (
+      <div className={styles.page}>
+        <section className={styles.panelCard}>
+          <StateBlock
+            size="page"
+            state={
+              status === 'loading'
+                ? { kind: 'loading', label: 'Loading items' }
+                : {
+                    kind: 'failure',
+                    title: 'Could not load these items',
+                    body: loadError ?? 'The server did not answer.',
+                    retry: { label: 'Try again', onAct: reload },
+                  }
+            }
+          />
+        </section>
+      </div>
+    )
+  }
+
   if (room === undefined) {
     return (
       <div className={styles.page}>
         <section className={styles.panelCard}>
           <h1 className="text-title">Room not found</h1>
-          <p className={`text-body ${styles.muted}`}>This room does not exist in fixture state.</p>
+          <p className={`text-body ${styles.muted}`}>This room no longer exists.</p>
           <Button tone="secondary" onClick={() => navigate('../..')}>
             Back to rooms
           </Button>

@@ -1,6 +1,5 @@
 import {
-  createContext,
-  useContext,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -26,15 +25,25 @@ import {
 } from 'react-router-dom'
 
 import { signIn as apiSignIn } from './api/adminApi.ts'
-import { setAuthToken } from './api/client.ts'
+import { setAuthToken, setUnauthenticatedHandler } from './api/client.ts'
 import { isLiveApi } from './api/config.ts'
 import { isApiError, messageForCode } from './api/errors.ts'
+import {
+  authContext,
+  hasExpired,
+  useAuth,
+  type AuthContextValue,
+  type Role,
+  type Session,
+  type SignInFailure,
+} from './app/auth/sessionContext.ts'
 import { Button, Field, TextInput, ToastProvider } from './kit/index.ts'
 import { ItemEditorPage } from './app/items/ItemEditorPage.tsx'
 import { LandingPage } from './app/landing/LandingPage.tsx'
 import { RoomItemsListPage } from './app/items/RoomItemsListPage.tsx'
 import { NarrationPage } from './app/narration/NarrationPage.tsx'
 import { ActivityPage } from './app/activity/ActivityPage.tsx'
+import { BillingPage } from './app/billing/BillingPage.tsx'
 import { TenantOverviewPage } from './app/overview/TenantOverviewPage.tsx'
 import { AuthoringStoreProvider } from './app/rooms/authoringStore.tsx'
 import { RoomEditorPage } from './app/rooms/RoomEditorPage.tsx'
@@ -54,41 +63,6 @@ import { AuditPage } from './app/operator/AuditPage.tsx'
 import { AdminsPage } from './app/operator/AdminsPage.tsx'
 import { TokenHarnessPage } from './preview/TokenHarnessPage.tsx'
 import styles from './app/Phase3App.module.css'
-
-type Role = 'MUSEUM_ADMIN' | 'SYSTEM_ADMIN'
-
-type Session = {
-  readonly email: string
-  readonly role: Role
-  /** Null for a system admin, who belongs to no museum. */
-  readonly museumId: string | null
-  /** Null in demo mode, when no API base URL is configured. */
-  readonly token: string | null
-  readonly expiresAt: string | null
-}
-
-type SignInInput = {
-  readonly email: string
-  readonly password: string
-  readonly role: Role
-}
-
-/**
- * `credentials` covers anything that must stay indistinguishable — a wrong
- * password, an unknown email, or the right account at the wrong door. `service`
- * is a problem with the connection itself, which is safe to describe plainly.
- */
-type SignInFailure = {
-  readonly ok: false
-  readonly kind: 'credentials' | 'service'
-  readonly message: string
-}
-
-type AuthContextValue = {
-  readonly session: Session | null
-  readonly signIn: (input: SignInInput) => Promise<{ ok: true } | SignInFailure>
-  readonly signOut: () => void
-}
 
 type SignInSurface = {
   readonly idPrefix: string
@@ -119,6 +93,9 @@ type ViewportMode = 'wide' | 'desktop' | 'drawer'
 const SESSION_KEY = 'adwa.admin.session.v2'
 const SIDEBAR_KEY_PREFIX = 'adwa.admin.phase3.sidebar'
 const DEMO_PASSWORD = 'demo123'
+
+/** setTimeout stores its delay in a signed 32-bit int and fires immediately past it. */
+const MAX_TIMEOUT_MS = 2_147_483_647
 
 const DEMO_ACCOUNTS = [
   { email: 'curator@adwa.local', role: 'MUSEUM_ADMIN' },
@@ -178,6 +155,7 @@ function tenantRouteTree(): ReactElement {
       <Route path="narration" element={<NarrationPage />} />
       <Route path="team" element={<TeamPage />} />
       <Route path="activity" element={<ActivityPage />} />
+      <Route path="billing" element={<BillingPage />} />
 
       <Route path="settings">
         <Route index element={<Navigate to="museum" replace />} />
@@ -189,8 +167,6 @@ function tenantRouteTree(): ReactElement {
     </>
   )
 }
-
-const authContext = createContext<AuthContextValue | null>(null)
 
 function getLandingPath(role: Role): string {
   return role === 'SYSTEM_ADMIN' ? '/operator/fleet' : '/app/overview'
@@ -215,12 +191,6 @@ function getDemoEmail(role: Role): string {
 
 function formatRole(role: Role): string {
   return role === 'SYSTEM_ADMIN' ? 'system administrator' : 'museum administrator'
-}
-
-function hasExpired(expiresAt: string | null): boolean {
-  if (expiresAt === null) return false
-  const at = new Date(expiresAt).getTime()
-  return Number.isFinite(at) && at <= Date.now()
 }
 
 function writeSession(session: Session): void {
@@ -320,6 +290,48 @@ function AuthProvider({ children }: { children: ReactNode }): ReactElement {
     setAuthToken(session?.token ?? null)
   }, [session])
 
+  const endSession = useCallback(() => {
+    setAuthToken(null)
+    setSession(null)
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(SESSION_KEY)
+    }
+  }, [])
+
+  /**
+   * The stored session is only checked on load, so a token that lapses while
+   * the console is open would otherwise sit there turning every action into a
+   * 401. A twelve-hour expiry overflows setTimeout's 32-bit delay, so the wait
+   * is capped and re-armed.
+   */
+  useEffect(() => {
+    const expiresAt = session?.expiresAt
+    if (expiresAt === undefined || expiresAt === null) return
+
+    const remaining = new Date(expiresAt).getTime() - Date.now()
+    if (!Number.isFinite(remaining)) return
+    if (remaining <= 0) {
+      endSession()
+      return
+    }
+
+    const timer = window.setTimeout(endSession, Math.min(remaining, MAX_TIMEOUT_MS))
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [session, endSession])
+
+  /**
+   * A token the server has already rejected is worth no more than an expired
+   * one, and the two are indistinguishable from here.
+   */
+  useEffect(() => {
+    setUnauthenticatedHandler(endSession)
+    return () => {
+      setUnauthenticatedHandler(null)
+    }
+  }, [endSession])
+
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
@@ -378,26 +390,12 @@ function AuthProvider({ children }: { children: ReactNode }): ReactElement {
           return CREDENTIAL_FAILURE
         }
       },
-      signOut: () => {
-        setAuthToken(null)
-        setSession(null)
-        if (typeof window !== 'undefined') {
-          window.localStorage.removeItem(SESSION_KEY)
-        }
-      },
+      signOut: endSession,
     }),
-    [session],
+    [session, endSession],
   )
 
   return <authContext.Provider value={value}>{children}</authContext.Provider>
-}
-
-function useAuth(): AuthContextValue {
-  const context = useContext(authContext)
-  if (context === null) {
-    throw new Error('Auth context is unavailable.')
-  }
-  return context
 }
 
 /**
@@ -963,6 +961,12 @@ function TenantShell({
   const scopedMuseum = museumId === null ? undefined : getMuseumById(museumId)
   const museumName = scopedMuseum?.name ?? (museumId !== null ? museumId : null)
   const isScoped = museumId !== null
+  /**
+   * What the pages below actually read and write. Under `/app` that is the
+   * museum the token names; under `/operator/tenant/:museumId` it is the one in
+   * the URL, because a system admin's token names none.
+   */
+  const activeMuseumId = museumId ?? session?.museumId ?? null
   const operatorEmail = isScoped && session !== null ? session.email : null
   const scopedContext = useMemo(
     () => ({
@@ -990,6 +994,7 @@ function TenantShell({
     { id: 'narration', label: 'Narration', icon: <NarrationIcon />, suffix: 2, path: `${base}/narration` },
     { id: 'team', label: 'Team', icon: <TeamIcon />, path: `${base}/team` },
     { id: 'activity', label: 'Activity', icon: <ActivityIcon />, path: `${base}/activity` },
+    { id: 'billing', label: 'Billing', icon: <BillingIcon />, path: `${base}/billing` },
     { id: 'settings', label: 'Settings', icon: <SettingsIcon />, path: `${base}/settings/museum` },
   ]
 
@@ -1139,7 +1144,7 @@ function TenantShell({
 
   return (
     <scopedTenantContext.Provider value={scopedContext}>
-      <AuthoringStoreProvider museumId={museumId ?? null}>
+      <AuthoringStoreProvider museumId={activeMuseumId}>
         <div className={styles.tenantShellFrame} data-plane="tenant">
           {isScoped ? (
             <header className={styles.scopeBand}>
@@ -1355,6 +1360,17 @@ function ActivityIcon(): ReactElement {
     children: (
       <>
         <path d="M4 12h4l2-4 4 8 2-4h4" />
+      </>
+    ),
+  })
+}
+
+function BillingIcon(): ReactElement {
+  return iconBase({
+    children: (
+      <>
+        <rect x="3" y="6" width="18" height="12" rx="2" />
+        <path d="M3 10h18" />
       </>
     ),
   })

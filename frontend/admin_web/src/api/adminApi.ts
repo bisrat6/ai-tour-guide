@@ -8,9 +8,15 @@
 
 import { apiRequest } from './client.ts'
 import type {
+  ApiAdminUser,
+  ApiAuditLogEntry,
   ApiItem,
   ApiMuseum,
+  ApiPlan,
   ApiRoom,
+  BillingStatusResponse,
+  CheckoutRequest,
+  CheckoutResponse,
   CreateItemRequest,
   CreateMuseumRequest,
   CreateMuseumResponse,
@@ -18,7 +24,9 @@ import type {
   HealthResponse,
   LoginRequest,
   LoginResponse,
+  ManualTierRequest,
   Paginated,
+  PaymentStatusResponse,
   UpdateItemRequest,
   UpdateMuseumRequest,
   UpdateRoomRequest,
@@ -83,6 +91,34 @@ export function addMuseumAdmin(
   })
 }
 
+/**
+ * The museum's administrators. A museum admin may read its own; only a system
+ * admin may read another museum's. There is no route to remove or suspend one.
+ */
+export function listMuseumAdmins(
+  museumId: string,
+  options: { limit?: number; cursor?: string } = {},
+): Promise<Paginated<ApiAdminUser>> {
+  return apiRequest<Paginated<ApiAdminUser>>(
+    `/admin/museums/${encodeURIComponent(museumId)}/admins`,
+    { query: { limit: options.limit, cursor: options.cursor } },
+  )
+}
+
+// -- Audit log -------------------------------------------------------------
+
+/**
+ * Newest first. A museum admin sees only its own museum's trail whatever it
+ * asks for; `museumId` narrows a system admin's view to one tenant.
+ */
+export function listAuditLogs(
+  options: { museumId?: string | null; limit?: number; cursor?: string } = {},
+): Promise<Paginated<ApiAuditLogEntry>> {
+  return apiRequest<Paginated<ApiAuditLogEntry>>('/admin/audit-logs', {
+    query: { museumId: options.museumId, limit: options.limit, cursor: options.cursor },
+  })
+}
+
 // -- Rooms -----------------------------------------------------------------
 
 /**
@@ -90,11 +126,11 @@ export function addMuseumAdmin(
  * ignored for a museum admin, whose token does. Pass the session's museumId and
  * it is correct either way.
  */
-export function listRooms(options: { museumId?: string | null; limit?: number } = {}): Promise<
-  Paginated<ApiRoom>
-> {
+export function listRooms(
+  options: { museumId?: string | null; limit?: number; cursor?: string } = {},
+): Promise<Paginated<ApiRoom>> {
   return apiRequest<Paginated<ApiRoom>>('/admin/rooms', {
-    query: { museumId: options.museumId, limit: options.limit },
+    query: { museumId: options.museumId, limit: options.limit, cursor: options.cursor },
   })
 }
 
@@ -132,8 +168,13 @@ export function deleteRoom(roomId: string, options: { force?: boolean } = {}): P
 
 // -- Items -----------------------------------------------------------------
 
-export function listItems(roomId: string): Promise<Paginated<ApiItem>> {
-  return apiRequest<Paginated<ApiItem>>('/admin/items', { query: { roomId } })
+export function listItems(
+  roomId: string,
+  options: { limit?: number; cursor?: string } = {},
+): Promise<Paginated<ApiItem>> {
+  return apiRequest<Paginated<ApiItem>>('/admin/items', {
+    query: { roomId, limit: options.limit, cursor: options.cursor },
+  })
 }
 
 export function createItem(input: CreateItemRequest): Promise<ApiItem> {
@@ -160,4 +201,41 @@ export function reorderRoomItems(roomId: string, itemIds: readonly string[]): Pr
     method: 'PATCH',
     body: { itemIds },
   })
+}
+
+// -- Billing ---------------------------------------------------------------
+
+/** Prices come from the database, limits from backend code. */
+export function listPlans(): Promise<{ plans: readonly ApiPlan[] }> {
+  return apiRequest<{ plans: readonly ApiPlan[] }>('/admin/billing/plans')
+}
+
+/** Tier, renewal, usage against the tier's limits, and recent payments. */
+export function getBillingStatus(
+  options: { museumId?: string | null; limit?: number; cursor?: string } = {},
+): Promise<BillingStatusResponse> {
+  return apiRequest<BillingStatusResponse>('/admin/billing/status', {
+    query: { museumId: options.museumId, limit: options.limit, cursor: options.cursor },
+  })
+}
+
+/**
+ * Opens a payment with the provider and hands back a URL to send the payer to.
+ * A second checkout for a tier that already has one pending is a 409.
+ */
+export function startCheckout(input: CheckoutRequest): Promise<CheckoutResponse> {
+  return apiRequest<CheckoutResponse>('/admin/billing/checkout', { method: 'POST', body: input })
+}
+
+/**
+ * Polled on return from the provider. The server re-verifies anything not yet
+ * paid rather than waiting for the reconciler, so the tier can change here.
+ */
+export function getPayment(txRef: string): Promise<PaymentStatusResponse> {
+  return apiRequest<PaymentStatusResponse>(`/admin/billing/payments/${encodeURIComponent(txRef)}`)
+}
+
+/** System admin only. Sets a tier without a payment; the reason is recorded. */
+export function setMuseumTier(input: ManualTierRequest): Promise<unknown> {
+  return apiRequest('/admin/billing/tier', { method: 'POST', body: input })
 }

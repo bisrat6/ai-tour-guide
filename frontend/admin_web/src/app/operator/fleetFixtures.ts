@@ -9,10 +9,18 @@ export type ReadinessSegment = {
   readonly marker: StatusMarker
 }
 
+/**
+ * `slug` stands where a region used to. The backend records no location for a
+ * museum, and the slug is the other thing that identifies one at a glance, so
+ * the second line of every card and row is real rather than invented.
+ *
+ * `spendMonthlyUsd` and `health` have no backend counterpart and are badged
+ * wherever they appear.
+ */
 export type FleetMuseum = {
   readonly id: string
   readonly name: string
-  readonly region: string
+  readonly slug: string
   readonly status: FleetStatus
   readonly roomCount: number
   readonly readiness: readonly ReadinessSegment[]
@@ -51,6 +59,30 @@ export function fleetHealthTone(health: FleetHealth): StatusTone {
   return 'success'
 }
 
+/**
+ * The API gives an ISO timestamp; the fixtures were written as pre-phrased
+ * strings like "2h ago". Rather than rewrite twelve fixtures to say the same
+ * thing in a different notation, anything that does not parse as a date is
+ * passed through as the phrase it already is.
+ */
+export function fleetUpdatedLabel(updatedAt: string): string {
+  const at = Date.parse(updatedAt)
+  if (Number.isNaN(at)) return updatedAt
+
+  const minutes = Math.max(0, Math.round((Date.now() - at) / 60000))
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.round(hours / 24)}d ago`
+}
+
+/** Sorts oldest-last whether the value is a timestamp or a fixture phrase. */
+export function fleetUpdatedSortValue(updatedAt: string): number {
+  const at = Date.parse(updatedAt)
+  return Number.isNaN(at) ? 0 : at
+}
+
 export function formatUsd(value: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(
     value,
@@ -69,7 +101,7 @@ export const FLEET_FIXTURES: readonly FleetMuseum[] = [
   {
     id: 'adwa-victory-memorial',
     name: 'Adwa Victory Memorial',
-    region: 'Addis Ababa',
+    slug: 'adwa-victory-memorial',
     status: 'active',
     roomCount: 8,
     readiness: markersFor('adwa', ['dot', 'dot', 'dot', 'dot', 'ring', 'dot', 'dash', 'dot']),
@@ -80,7 +112,7 @@ export const FLEET_FIXTURES: readonly FleetMuseum[] = [
   {
     id: 'entoto-heritage-museum',
     name: 'Entoto Heritage Museum',
-    region: 'Addis Ababa',
+    slug: 'entoto-heritage-museum',
     status: 'active',
     roomCount: 11,
     readiness: markersFor('entoto', ['dot', 'dot', 'dot', 'dot', 'dot', 'ring', 'dot', 'dot', 'dot', 'dash', 'dot']),
@@ -91,7 +123,7 @@ export const FLEET_FIXTURES: readonly FleetMuseum[] = [
   {
     id: 'harar-cultural-museum',
     name: 'Harar Cultural Museum',
-    region: 'Harar',
+    slug: 'harar-cultural-museum',
     status: 'suspended',
     roomCount: 6,
     readiness: markersFor('harar', ['dash', 'dash', 'dash', 'dash', 'dash', 'dash']),
@@ -102,7 +134,7 @@ export const FLEET_FIXTURES: readonly FleetMuseum[] = [
   {
     id: 'sheger-modern-museum',
     name: 'Sheger Modern Museum',
-    region: 'Addis Ababa',
+    slug: 'sheger-modern-museum',
     status: 'onboarding',
     roomCount: 4,
     readiness: markersFor('sheger', ['ring', 'dash', 'dash', 'dash']),
@@ -113,7 +145,7 @@ export const FLEET_FIXTURES: readonly FleetMuseum[] = [
   {
     id: 'axum-obelisk-gallery',
     name: 'Axum Obelisk Gallery',
-    region: 'Tigray',
+    slug: 'axum-obelisk-gallery',
     status: 'active',
     roomCount: 7,
     readiness: markersFor('axum', ['dot', 'dot', 'dot', 'ring', 'dot', 'dot', 'dot']),
@@ -124,7 +156,7 @@ export const FLEET_FIXTURES: readonly FleetMuseum[] = [
   {
     id: 'gondar-palace-archives',
     name: 'Gondar Palace Archives',
-    region: 'Amhara',
+    slug: 'gondar-palace-archives',
     status: 'active',
     roomCount: 9,
     readiness: markersFor('gondar', ['dot', 'dot', 'dot', 'dot', 'dot', 'dot', 'ring', 'dot', 'dot']),
@@ -135,7 +167,7 @@ export const FLEET_FIXTURES: readonly FleetMuseum[] = [
   {
     id: 'lalibela-sacred-museum',
     name: 'Lalibela Sacred Museum',
-    region: 'Amhara',
+    slug: 'lalibela-sacred-museum',
     status: 'active',
     roomCount: 5,
     readiness: markersFor('lalibela', ['dot', 'dot', 'ring', 'dot', 'dot']),
@@ -146,7 +178,7 @@ export const FLEET_FIXTURES: readonly FleetMuseum[] = [
   {
     id: 'bahir-dar-lake-museum',
     name: 'Bahir Dar Lake Museum',
-    region: 'Amhara',
+    slug: 'bahir-dar-lake-museum',
     status: 'active',
     roomCount: 10,
     readiness: markersFor('bahir-dar', ['dot', 'dot', 'dot', 'dot', 'dot', 'dot', 'dot', 'ring', 'dot', 'dot']),
@@ -157,7 +189,7 @@ export const FLEET_FIXTURES: readonly FleetMuseum[] = [
   {
     id: 'jimma-coffee-heritage',
     name: 'Jimma Coffee Heritage',
-    region: 'Oromia',
+    slug: 'jimma-coffee-heritage',
     status: 'active',
     roomCount: 6,
     readiness: markersFor('jimma', ['dot', 'dot', 'dot', 'dot', 'ring', 'dot']),
@@ -168,7 +200,7 @@ export const FLEET_FIXTURES: readonly FleetMuseum[] = [
   {
     id: 'mekelle-history-center',
     name: 'Mekelle History Center',
-    region: 'Tigray',
+    slug: 'mekelle-history-center',
     status: 'active',
     roomCount: 8,
     readiness: markersFor('mekelle', ['dot', 'dot', 'ring', 'dot', 'dot', 'cross', 'dot', 'dot']),
@@ -179,7 +211,7 @@ export const FLEET_FIXTURES: readonly FleetMuseum[] = [
   {
     id: 'arbaminch-rift-gallery',
     name: 'Arba Minch Rift Gallery',
-    region: 'SNNPR',
+    slug: 'arbaminch-rift-gallery',
     status: 'onboarding',
     roomCount: 3,
     readiness: markersFor('arbaminch', ['ring', 'dash', 'dash']),
@@ -190,7 +222,7 @@ export const FLEET_FIXTURES: readonly FleetMuseum[] = [
   {
     id: 'dire-dawa-rail-museum',
     name: 'Dire Dawa Rail Museum',
-    region: 'Dire Dawa',
+    slug: 'dire-dawa-rail-museum',
     status: 'active',
     roomCount: 7,
     readiness: markersFor('dire-dawa', ['dot', 'dot', 'dot', 'dot', 'dot', 'ring', 'dot']),

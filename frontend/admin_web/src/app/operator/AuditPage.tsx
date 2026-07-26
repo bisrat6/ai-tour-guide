@@ -1,89 +1,153 @@
-import { useMemo, useState, type ReactElement } from 'react'
+/**
+ * The audit trail, read from `GET /admin/audit-logs`.
+ *
+ * The trail is deliberately thin: a verb, an entity type, an id, an actor, and
+ * a time. It does not carry a human sentence about what changed, so the "change
+ * detail" column the fixtures had is gone rather than invented — the entity id
+ * is shown instead, which is the thing you would actually search for.
+ */
 
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
+
+import * as api from '../../api/adminApi.ts'
+import { isLiveApi } from '../../api/config.ts'
+import { isApiError } from '../../api/errors.ts'
 import {
   DataTable,
   Field,
   Panel,
   Select,
+  StateBlock,
   StatusBadge,
   TableToolbar,
   useDataTable,
   type Column,
 } from '../../kit/index.ts'
+import { DemoDataNote } from '../common/DemoDataNote.tsx'
 import {
-  AUDIT_ACTION_OPTIONS,
-  AUDIT_FIXTURES,
-  AUDIT_WINDOW_OPTIONS,
-  auditActionLabel,
-  auditSourceLabel,
-  auditSourceTone,
-  type AuditAction,
-  type AuditEntry,
-} from './phase9Fixtures.ts'
+  auditActorLabel,
+  auditActorTone,
+  auditPhrase,
+  toAuditRow,
+  type AuditRow,
+} from './auditLogMapping.ts'
+import { AUDIT_WINDOW_OPTIONS } from './phase9Fixtures.ts'
+import { useFleetStore } from './fleetStore.tsx'
 import styles from './OperatorPhase9Pages.module.css'
 
 type TimeWindowFilter = '24h' | '7d' | '30d' | 'all'
 
-function parseAuditTime(value: string): number {
-  return Date.parse(value.replace(' ', 'T'))
+const WINDOW_MS: Readonly<Record<Exclude<TimeWindowFilter, 'all'>, number>> = {
+  '24h': 24 * 60 * 60 * 1000,
+  '7d': 7 * 24 * 60 * 60 * 1000,
+  '30d': 30 * 24 * 60 * 60 * 1000,
 }
 
-function withinWindow(timestamp: number, windowFilter: TimeWindowFilter): boolean {
+/** Deep enough that the window filter has something to narrow. */
+const PAGE_SIZE = 200
+
+function withinWindow(happenedAt: string, windowFilter: TimeWindowFilter): boolean {
   if (windowFilter === 'all') return true
-  const now = Date.parse('2026-07-25T16:30:00')
-  const ageMs = now - timestamp
-  if (windowFilter === '24h') return ageMs <= 24 * 60 * 60 * 1000
-  if (windowFilter === '7d') return ageMs <= 7 * 24 * 60 * 60 * 1000
-  return ageMs <= 30 * 24 * 60 * 60 * 1000
+  const at = Date.parse(happenedAt)
+  if (Number.isNaN(at)) return true
+  return Date.now() - at <= WINDOW_MS[windowFilter]
+}
+
+function formatTimestamp(iso: string): string {
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return iso
+  return at.toISOString().slice(0, 16).replace('T', ' ')
 }
 
 export function AuditPage(): ReactElement {
+  const { museums } = useFleetStore()
+
+  const [rows, setRows] = useState<readonly AuditRow[]>([])
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(
+    isLiveApi ? 'loading' : 'ready',
+  )
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
+
   const [tenantFilter, setTenantFilter] = useState<string>('all')
   const [actorFilter, setActorFilter] = useState<string>('all')
-  const [actionFilter, setActionFilter] = useState<AuditAction | 'all'>('all')
   const [windowFilter, setWindowFilter] = useState<TimeWindowFilter>('7d')
 
-  const tenantOptions = useMemo(
-    () => [
-      { value: 'all', label: 'All tenants' },
-      ...Array.from(new Set(AUDIT_FIXTURES.map((entry) => entry.tenantId))).map((tenantId) => ({
-        value: tenantId,
-        label: AUDIT_FIXTURES.find((entry) => entry.tenantId === tenantId)?.tenantName ?? tenantId,
-      })),
-    ],
-    [],
-  )
+  const reload = useCallback(() => {
+    setReloadToken((token) => token + 1)
+  }, [])
+
+  useEffect(() => {
+    if (!isLiveApi) return
+
+    let current = true
+    setStatus('loading')
+    setLoadError(null)
+
+    api
+      .listAuditLogs({ limit: PAGE_SIZE })
+      .then((page) => {
+        if (!current) return
+        setRows(page.data.map(toAuditRow))
+        setStatus('ready')
+      })
+      .catch((error: unknown) => {
+        if (!current) return
+        setRows([])
+        setStatus('error')
+        setLoadError(isApiError(error) ? error.message : 'Could not load the audit trail.')
+      })
+
+    return () => {
+      current = false
+    }
+  }, [reloadToken])
+
+  /**
+   * Named from the fleet where possible, so a tenant with no activity in the
+   * window is still selectable rather than vanishing from the filter.
+   */
+  const tenantOptions = useMemo(() => {
+    const fromFleet = museums.map((museum) => ({ value: museum.id, label: museum.name }))
+    const known = new Set(fromFleet.map((option) => option.value))
+    const fromRows = rows
+      .filter((row) => row.museumId !== null && !known.has(row.museumId))
+      .map((row) => ({ value: row.museumId as string, label: row.museumName }))
+    return [{ value: 'all', label: 'All tenants' }, ...fromFleet, ...fromRows]
+  }, [museums, rows])
 
   const actorOptions = useMemo(
     () => [
       { value: 'all', label: 'All actors' },
-      ...Array.from(new Set(AUDIT_FIXTURES.map((entry) => entry.actor))).map((actor) => ({ value: actor, label: actor })),
+      ...Array.from(new Set(rows.map((row) => row.actor))).map((actor) => ({
+        value: actor,
+        label: actor,
+      })),
     ],
-    [],
+    [rows],
   )
 
-  const rows = useMemo(
+  const filtered = useMemo(
     () =>
-      AUDIT_FIXTURES.filter((entry) => {
-        if (tenantFilter !== 'all' && entry.tenantId !== tenantFilter) return false
-        if (actorFilter !== 'all' && entry.actor !== actorFilter) return false
-        if (actionFilter !== 'all' && entry.action !== actionFilter) return false
-        return withinWindow(parseAuditTime(entry.happenedAt), windowFilter)
+      rows.filter((row) => {
+        if (tenantFilter !== 'all' && row.museumId !== tenantFilter) return false
+        if (actorFilter !== 'all' && row.actor !== actorFilter) return false
+        return withinWindow(row.happenedAt, windowFilter)
       }),
-    [actionFilter, actorFilter, tenantFilter, windowFilter],
+    [actorFilter, rows, tenantFilter, windowFilter],
   )
 
-  const columns = useMemo<readonly Column<AuditEntry>[]>(
+  const columns = useMemo<readonly Column<AuditRow>[]>(
     () => [
       {
         id: 'tenant',
         header: 'Tenant',
         sortable: true,
-        sortValue: (entry) => entry.tenantName,
-        cell: (entry) => (
+        sortValue: (row) => row.museumName,
+        cell: (row) => (
           <div className={styles.rowMeta}>
-            <span className="museum-name">{entry.tenantName}</span>
-            <span className={`text-caption ${styles.muted}`}>{entry.tenantId}</span>
+            <span className="museum-name">{row.museumName}</span>
+            <span className={`text-caption ${styles.muted}`}>{row.museumId ?? '—'}</span>
           </div>
         ),
       },
@@ -91,24 +155,24 @@ export function AuditPage(): ReactElement {
         id: 'actor',
         header: 'Actor',
         sortable: true,
-        sortValue: (entry) => entry.actor,
-        cell: (entry) => <span className="text-body">{entry.actor}</span>,
+        sortValue: (row) => row.actor,
+        cell: (row) => <span className="text-body">{row.actor}</span>,
       },
       {
         id: 'action',
         header: 'Action',
         sortable: true,
-        sortValue: (entry) => auditActionLabel(entry.action),
-        cell: (entry) => <span className="text-body">{auditActionLabel(entry.action)}</span>,
+        sortValue: (row) => auditPhrase(row.action, row.entityType),
+        cell: (row) => <span className="text-body">{auditPhrase(row.action, row.entityType)}</span>,
       },
       {
-        id: 'detail',
-        header: 'Change detail',
+        id: 'entity',
+        header: 'Entity',
         sortable: false,
-        cell: (entry) => (
+        cell: (row) => (
           <div className={styles.rowMeta}>
-            <span className="text-body">{entry.detail}</span>
-            <span className={`text-caption ${styles.muted}`}>{entry.target}</span>
+            <span className="text-body">{row.entityType}</span>
+            <span className={`text-caption ${styles.monoDate}`}>{row.entityId}</span>
           </div>
         ),
       },
@@ -116,26 +180,40 @@ export function AuditPage(): ReactElement {
         id: 'source',
         header: 'Source',
         sortable: true,
-        sortValue: (entry) => auditSourceLabel(entry.source),
-        cell: (entry) => <StatusBadge tone={auditSourceTone(entry.source)} label={auditSourceLabel(entry.source)} />,
+        sortValue: (row) => auditActorLabel(row.actorKind),
+        cell: (row) => (
+          <StatusBadge
+            tone={auditActorTone(row.actorKind)}
+            label={auditActorLabel(row.actorKind)}
+          />
+        ),
       },
       {
         id: 'time',
         header: 'Time',
         sortable: true,
-        sortValue: (entry) => entry.happenedAt,
-        cell: (entry) => <span className={`text-caption ${styles.monoDate}`}>{entry.happenedAt}</span>,
+        sortValue: (row) => Date.parse(row.happenedAt) || 0,
+        cell: (row) => (
+          <span className={`text-caption ${styles.monoDate}`}>
+            {formatTimestamp(row.happenedAt)}
+          </span>
+        ),
       },
     ],
     [],
   )
 
   const table = useDataTable({
-    rows,
-    rowKey: (entry) => entry.id,
+    rows: filtered,
+    rowKey: (row) => row.id,
     columns,
     pageSize: 10,
-    searchFields: [(entry) => entry.tenantName, (entry) => entry.actor, (entry) => entry.detail, (entry) => entry.target],
+    searchFields: [
+      (row) => row.museumName,
+      (row) => row.actor,
+      (row) => row.entityType,
+      (row) => row.entityId,
+    ],
     initialSort: { columnId: 'time', direction: 'descending' },
   })
 
@@ -144,11 +222,14 @@ export function AuditPage(): ReactElement {
       <header className={styles.headerCard}>
         <h1 className="text-title">Audit</h1>
         <p className={`text-body ${styles.muted}`}>
-          Cross-tenant change history across tenant admins and platform operators.
+          Every admin mutation, newest first, across tenant admins and platform operators.
         </p>
-        <p className={`text-caption ${styles.muted}`}>
-          Includes scoped operator writes from Phase 8 tenant support flows.
-        </p>
+        {isLiveApi ? null : (
+          <DemoDataNote>
+            No API is configured, so there is no trail to read. Point VITE_API_BASE_URL at the
+            backend to see real activity.
+          </DemoDataNote>
+        )}
       </header>
 
       <section className={styles.formCard}>
@@ -173,16 +254,6 @@ export function AuditPage(): ReactElement {
               />
             )}
           </Field>
-          <Field id="audit-action-filter" label="Action">
-            {(control) => (
-              <Select
-                {...control}
-                value={actionFilter}
-                onChange={(value) => setActionFilter(value as AuditAction | 'all')}
-                options={AUDIT_ACTION_OPTIONS}
-              />
-            )}
-          </Field>
           <Field id="audit-window-filter" label="Time window">
             {(control) => (
               <Select
@@ -196,27 +267,42 @@ export function AuditPage(): ReactElement {
         </div>
       </section>
 
-      <Panel>
-        <DataTable
-          caption="Cross-tenant audit history"
-          columns={columns}
-          rows={table.pageRows}
-          rowKey={(entry) => entry.id}
-          sort={table.sort}
-          onSortChange={table.setSort}
-          pagination={table.pagination}
-          toolbar={
-            <TableToolbar
-              searchValue={table.searchQuery}
-              onSearchChange={table.setSearchQuery}
-              searchLabel="Search audit"
-              searchPlaceholder="Search tenant, actor, or target"
-              actions={<p className="text-caption">{table.total} entries in current filter</p>}
-            />
-          }
-          stickyHeader
+      {status === 'loading' ? <StateBlock state={{ kind: 'loading', label: 'the audit trail' }} /> : null}
+
+      {status === 'error' ? (
+        <StateBlock
+          state={{
+            kind: 'failure',
+            title: 'The audit trail did not load',
+            body: loadError ?? 'The request failed.',
+            retry: { label: 'Try again', onAct: reload },
+          }}
         />
-      </Panel>
+      ) : null}
+
+      {status === 'ready' ? (
+        <Panel>
+          <DataTable
+            caption="Cross-tenant audit history"
+            columns={columns}
+            rows={table.pageRows}
+            rowKey={(row) => row.id}
+            sort={table.sort}
+            onSortChange={table.setSort}
+            pagination={table.pagination}
+            toolbar={
+              <TableToolbar
+                searchValue={table.searchQuery}
+                onSearchChange={table.setSearchQuery}
+                searchLabel="Search audit"
+                searchPlaceholder="Search tenant, actor, or entity"
+                actions={<p className="text-caption">{table.total} entries in current filter</p>}
+              />
+            }
+            stickyHeader
+          />
+        </Panel>
+      ) : null}
     </div>
   )
 }
